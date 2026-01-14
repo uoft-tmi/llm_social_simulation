@@ -1,8 +1,5 @@
 # simulation/engine.py
-from typing import List
-
-
-class SimulationEngine:
+class SimulationEngine: 
     def __init__(self, gameworld, agents):
         self.gameworld = gameworld
         self.agents = agents
