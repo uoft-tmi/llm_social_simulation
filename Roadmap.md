@@ -21,13 +21,13 @@ Phase 0 establishes a stable foundation or internal environment for all later ph
 
 
 ### Deliverables (Minimal Set)
-### SimulationEngine
+#### SimulationEngine
 - Deterministic round-based orchestration
 - Pull observations from Gameworld
 - Collect agent actions and apply them each round
 - Append-only history of TickResult
 
-### Gameworld
+#### Gameworld
 Single source of truth for:
 - Agent graph (adjacency list)
 - Wealth accumulation
@@ -67,4 +67,5 @@ Single source of truth for:
 Purpose: Establish controls so LLM behavior can be isolated later.
 ## Phase 3 -- LLM Agents, Communication, and Dynamic Networks
 Purpose: Study how LLMs behave as social agents under constraints.
+
 
