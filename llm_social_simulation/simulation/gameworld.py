@@ -145,6 +145,12 @@ class OpenResourcesConfig:
     initial_pool: float = 0.0
     initial_wealth: float = 0.0
     max_harvest_per_step: float = 1_000_000.0
+    resource_cap: float | None = None
+    regen_rate: float = 0.05
+    regen_mode: str = "logistic"
+    governance_reward_rate: float = 0.0
+    reward_mode: str = "proportional"
+    collapse_threshold: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -177,8 +183,7 @@ class OpenResourcesTick:
     """
     Per-step result object for analytics and research.
 
-    This is contract-only for now; many values may be placeholders until
-    full dynamics are implemented.
+    Fields capture before/after state and accounting outputs for one settled step.
     """
 
     t: int
@@ -207,10 +212,9 @@ class OpenResourcesState:
 
 class OpenResourcesGameWorld:
     """
-    Open Resources game contract adapter.
+    Open Resources gameworld implementing MVP commons dynamics.
 
-    This class intentionally implements only the interface expected by the
-    simulation engine: `get_observation(agent_id)` and
+    The simulation engine interacts through `get_observation(agent_id)` and
     `apply_actions(actions) -> OpenResourcesTick`.
     """
 
@@ -234,20 +238,24 @@ class OpenResourcesGameWorld:
             P=self.state.P,
             self_wealth=self.state.wealth[agent_id],
             known_agents=list(self.config.agent_ids),
-            info={"contract_only": True},
+            info={"contract_only": False, "dynamics_implemented": True},
         )
 
     def apply_actions(self, actions: Mapping[AgentId, OpenResourcesAction]) -> OpenResourcesTick:
         """
-        Validate and normalize actions, then emit a contract-complete tick.
-
-        Full dynamics are deferred to the next implementation step.
+        Execute one Open Resources step with dynamics in this order:
+        contribution -> harvest allocation -> optional rewards -> regeneration.
         """
         harvest_requested: dict[AgentId, float] = {}
         harvest_actual: dict[AgentId, float] = {}
         contribute: dict[AgentId, float] = {}
         reward: dict[AgentId, float] = {}
         clamped: dict[AgentId, dict[str, bool]] = {}
+
+        t = self.state.t
+        r_before = self.state.R
+        p_before = self.state.P
+        wealth_before = dict(self.state.wealth)
 
         for agent_id in self.config.agent_ids:
             if agent_id not in actions:
@@ -261,36 +269,122 @@ class OpenResourcesGameWorld:
                 requested_harvest = float(action["harvest"])
                 requested_contribute = float(action["contribute"])
 
-            wealth_now = self.state.wealth[agent_id]
+            wealth_now = wealth_before[agent_id]
 
             clamped_harvest = min(max(0.0, requested_harvest), self.config.max_harvest_per_step)
             clamped_contribute = min(max(0.0, requested_contribute), wealth_now)
 
             harvest_requested[agent_id] = clamped_harvest
-            harvest_actual[agent_id] = (
-                clamped_harvest  # placeholder until allocation is implemented
-            )
             contribute[agent_id] = clamped_contribute
-            reward[agent_id] = 0.0  # placeholder until governance reward logic is implemented
             clamped[agent_id] = {
                 "harvest": clamped_harvest != requested_harvest,
                 "contribute": clamped_contribute != requested_contribute,
             }
 
+        wealth_after_contrib = {
+            agent_id: wealth_before[agent_id] - contribute[agent_id]
+            for agent_id in self.config.agent_ids
+        }
+        p_after_contrib = p_before + sum(contribute.values())
+
+        h_req = sum(harvest_requested.values())
+        if h_req == 0.0:
+            allocation_scale = 0.0
+            harvest_actual = {agent_id: 0.0 for agent_id in self.config.agent_ids}
+        elif h_req <= r_before:
+            allocation_scale = 1.0
+            harvest_actual = dict(harvest_requested)
+        else:
+            allocation_scale = r_before / h_req
+            harvest_actual = {
+                agent_id: harvest_requested[agent_id] * allocation_scale
+                for agent_id in self.config.agent_ids
+            }
+
+        h_act = sum(harvest_actual.values())
+        r_mid = max(0.0, r_before - h_act)
+
+        wealth_after_harvest = {
+            agent_id: wealth_after_contrib[agent_id] + harvest_actual[agent_id]
+            for agent_id in self.config.agent_ids
+        }
+
+        total_contrib = sum(contribute.values())
+        if (
+            self.config.governance_reward_rate > 0.0
+            and p_after_contrib > 0.0
+            and total_contrib > 0.0
+        ):
+            reward_budget = min(
+                p_after_contrib,
+                self.config.governance_reward_rate * total_contrib,
+            )
+            if self.config.reward_mode == "equal":
+                eligible_agents = [
+                    agent_id for agent_id in self.config.agent_ids if contribute[agent_id] > 0.0
+                ]
+                per_agent_reward = reward_budget / len(eligible_agents) if eligible_agents else 0.0
+                reward = {
+                    agent_id: per_agent_reward if agent_id in eligible_agents else 0.0
+                    for agent_id in self.config.agent_ids
+                }
+            elif self.config.reward_mode == "proportional":
+                reward = {
+                    agent_id: reward_budget * (contribute[agent_id] / total_contrib)
+                    for agent_id in self.config.agent_ids
+                }
+            else:
+                raise ValueError(f"Unsupported reward_mode: {self.config.reward_mode}")
+        else:
+            reward = {agent_id: 0.0 for agent_id in self.config.agent_ids}
+
+        p_after_reward = p_after_contrib - sum(reward.values())
+        wealth_after_reward = {
+            agent_id: wealth_after_harvest[agent_id] + reward[agent_id]
+            for agent_id in self.config.agent_ids
+        }
+
+        cap = (
+            self.config.resource_cap
+            if self.config.resource_cap is not None
+            else max(self.config.initial_resource, 1.0)
+        )
+        regen_mode = self.config.regen_mode
+        if regen_mode == "logistic":
+            regen_delta = self.config.regen_rate * r_mid * (1.0 - (r_mid / cap))
+        elif regen_mode == "linear":
+            regen_delta = self.config.regen_rate * (cap - r_mid)
+        else:
+            raise ValueError(f"Unsupported regen_mode: {regen_mode}")
+
+        r_after = min(cap, max(0.0, r_mid + regen_delta))
+
+        self.state.R = r_after
+        self.state.P = p_after_reward
+        self.state.wealth = wealth_after_reward
+        self.state.t = t + 1
+
         tick = OpenResourcesTick(
-            t=self.state.t,
-            R_before=self.state.R,
-            R_after=self.state.R,
-            P_before=self.state.P,
-            P_after=self.state.P,
+            t=t,
+            R_before=r_before,
+            R_after=r_after,
+            P_before=p_before,
+            P_after=p_after_reward,
             harvest_requested=harvest_requested,
             harvest_actual=harvest_actual,
             contribute=contribute,
             reward=reward,
             wealth=dict(self.state.wealth),
             clamped=clamped,
-            info={"contract_only": True, "dynamics_implemented": False},
+            info={
+                "contract_only": True,
+                "dynamics_implemented": True,
+                "H_req": h_req,
+                "H_act": h_act,
+                "allocation_scale": allocation_scale,
+                "regen_mode": regen_mode,
+                "R_mid": r_mid,
+                "collapsed": bool(r_after <= self.config.collapse_threshold),
+            },
         )
-
-        self.state.t += 1
         return tick
