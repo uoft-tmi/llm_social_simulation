@@ -28,19 +28,43 @@ class GreedyHarvesterAgent:
 
 @dataclass
 class CooperativeSustainableAgent:
-    """Harvest conservatively by per-capita resource and contribute from wealth."""
-
     agent_id: int
     max_harvest_per_step: float
-    target_share: float = 0.5
-    contrib_rate: float = 0.05
+    resource_cap: float
+    regen_rate: float
+    regen_mode: str = "logistic"
+    safety: float = 0.8
+    contrib_rate: float = 0.02
+    min_resource_frac: float = 0.05
 
     def decide(self, obs: OpenResourcesObservation) -> OpenResourcesAction:
-        n_agents = max(len(obs.known_agents), 1)
-        harvest_target = float(self.target_share) * (float(obs.R) / float(n_agents))
-        harvest = min(float(self.max_harvest_per_step), max(0.0, harvest_target))
-        contribute = max(0.0, float(self.contrib_rate) * float(obs.self_wealth))
-        return OpenResourcesAction(harvest=float(harvest), contribute=float(contribute))
+        n = max(1, len(obs.known_agents))
+        R = max(0.0, float(obs.R))
+        K = max(float(self.resource_cap), 1e-9)
+        r = max(0.0, float(self.regen_rate))
+
+        frac = R / K
+
+        # hard brake when very low resource
+        if frac <= self.min_resource_frac:
+            harvest = 0.0
+        else:
+            if self.regen_mode == "logistic":
+                regen = r * R * max(0.0, 1.0 - frac)
+            elif self.regen_mode == "linear":
+                regen = r * max(0.0, K - R)
+            else:
+                raise ValueError(f"Unsupported regen_mode: {self.regen_mode}")
+
+            total_harvest = self.safety * regen
+            harvest = total_harvest / n
+
+        harvest = min(self.max_harvest_per_step, max(0.0, float(harvest)))
+
+        contribute = self.contrib_rate * float(obs.self_wealth)
+        contribute = min(max(0.0, contribute), float(obs.self_wealth))
+
+        return OpenResourcesAction(harvest=harvest, contribute=contribute)
 
 
 @dataclass

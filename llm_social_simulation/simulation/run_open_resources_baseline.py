@@ -31,6 +31,8 @@ def _build_agents(agent_type: str, config: OpenResourcesConfig):
         if config.resource_cap is not None
         else max(float(config.initial_resource), 1.0)
     )
+    r = float(config.regen_rate)
+    regen_mode = str(config.regen_mode)
 
     if agent_type == "greedy":
         return [
@@ -39,7 +41,16 @@ def _build_agents(agent_type: str, config: OpenResourcesConfig):
         ]
     if agent_type == "coop":
         return [
-            CooperativeSustainableAgent(agent_id=agent_id, max_harvest_per_step=max_h)
+            CooperativeSustainableAgent(
+                agent_id=agent_id,
+                max_harvest_per_step=max_h,
+                resource_cap=cap,
+                regen_rate=r,
+                regen_mode=regen_mode,
+                safety=0.8,
+                contrib_rate=0.02,
+                min_resource_frac=0.05,
+            )
             for agent_id in config.agent_ids
         ]
     if agent_type == "adaptive":
@@ -59,7 +70,16 @@ def _build_agents(agent_type: str, config: OpenResourcesConfig):
                 agents.append(GreedyHarvesterAgent(agent_id=agent_id, max_harvest_per_step=max_h))
             else:
                 agents.append(
-                    CooperativeSustainableAgent(agent_id=agent_id, max_harvest_per_step=max_h)
+                    CooperativeSustainableAgent(
+                        agent_id=agent_id,
+                        max_harvest_per_step=max_h,
+                        resource_cap=cap,
+                        regen_rate=r,
+                        regen_mode=regen_mode,
+                        safety=0.8,
+                        contrib_rate=0.02,
+                        min_resource_frac=0.05,
+                    )
                 )
         return agents
 

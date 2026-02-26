@@ -170,9 +170,9 @@ class OpenResourcesObservation:
     """
 
     self_id: AgentId
-    t: int
-    R: float
-    P: float
+    t: int  # the number of rounds
+    R: float  # public resources
+    P: float  # public pool (for contribution and rewards)
     self_wealth: float
     known_agents: list[AgentId]
     info: dict[str, Any]
@@ -280,13 +280,13 @@ class OpenResourcesGameWorld:
                 "harvest": clamped_harvest != requested_harvest,
                 "contribute": clamped_contribute != requested_contribute,
             }
-
+        # step 1: contribute to the pool
         wealth_after_contrib = {
             agent_id: wealth_before[agent_id] - contribute[agent_id]
             for agent_id in self.config.agent_ids
         }
         p_after_contrib = p_before + sum(contribute.values())
-
+        # step 2: harvest
         h_req = sum(harvest_requested.values())
         if h_req == 0.0:
             allocation_scale = 0.0
@@ -294,7 +294,7 @@ class OpenResourcesGameWorld:
         elif h_req <= r_before:
             allocation_scale = 1.0
             harvest_actual = dict(harvest_requested)
-        else:
+        else:  # propotional scaling
             allocation_scale = r_before / h_req
             harvest_actual = {
                 agent_id: harvest_requested[agent_id] * allocation_scale
