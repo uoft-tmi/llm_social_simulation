@@ -377,7 +377,7 @@ class OpenResourcesGameWorld:
             wealth=dict(self.state.wealth),
             clamped=clamped,
             info={
-                "contract_only": True,
+                "contract_only": False,
                 "dynamics_implemented": True,
                 "H_req": h_req,
                 "H_act": h_act,
