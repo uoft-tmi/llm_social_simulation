@@ -11,6 +11,28 @@ from .types import LLMParseError
 TModel = TypeVar("TModel", bound=BaseModel)
 
 
+def _force_no_additional_props(node: object) -> None:
+    if isinstance(node, dict):
+        if node.get("type") == "object":
+            node.setdefault("additionalProperties", False)
+            props = node.get("properties")
+            if isinstance(props, dict):
+                for child in props.values():
+                    _force_no_additional_props(child)
+
+        for key in ("items", "anyOf", "oneOf", "allOf"):
+            if key in node:
+                _force_no_additional_props(node[key])
+
+        for value in node.values():
+            _force_no_additional_props(value)
+        return
+
+    if isinstance(node, list):
+        for child in node:
+            _force_no_additional_props(child)
+
+
 def _strip_markdown_fences(content: str) -> str:
     text = content.strip()
     if not text.startswith("```"):
@@ -58,11 +80,13 @@ def strict_json_parse(content: str, schema: type[TModel]) -> TModel:
 
 def response_format_for_schema(schema: type[BaseModel]) -> dict[str, object]:
     """Provider-ready json-schema response format."""
+    json_schema = schema.model_json_schema()
+    _force_no_additional_props(json_schema)
     return {
         "type": "json_schema",
         "json_schema": {
             "name": schema.__name__,
-            "schema": schema.model_json_schema(),
+            "schema": json_schema,
             "strict": True,
         },
     }
