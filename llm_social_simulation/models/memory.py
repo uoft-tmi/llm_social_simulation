@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -17,7 +18,7 @@ class MemoryEvent:
 
     def to_prompt_item(
         self,
-    ) -> dict[str, float | int | bool | str | dict[str, float] | dict[str, bool] | None]:
+    ) -> dict[str, Any]:
         return {
             "t": self.t,
             "R": self.R,
