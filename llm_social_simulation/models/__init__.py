@@ -1,6 +1,5 @@
 from .client import LLMClient
 from .mock_client import MockClient
-from .openai_client import OpenAIClient
 from .toolkit import (
     CachedClient,
     DiskCache,

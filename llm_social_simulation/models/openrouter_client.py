@@ -41,7 +41,7 @@ class OpenRouterClient(LLMClient):
         http_referer: str | None = None,
         x_title: str | None = None,
     ):
-        self.api_key = os.getenv("OPENROUTER_API_KEY")
+        self.api_key = os.getenv("OPENROUTER_API_KEY") if api_key is None else api_key
         if not self.api_key:
             raise LLMProviderError("OPENROUTER_API_KEY is required for OpenRouterClient")
 
