@@ -9,7 +9,7 @@ from ..client import LLMClient
 from ..memory import MemoryEvent, MemoryWindowStore
 from ..parser import open_resources_response_format, parse_open_resources_decision
 from ..prompt_builder import build_open_resources_messages
-from ..types import LLMRequest
+from ..types import LLMParseError, LLMRequest
 from .base import OpenResourcesPolicy
 
 
@@ -18,7 +18,7 @@ class LLMOpenResourcesPolicyConfig:
     model: str
     run_id: str
     temperature: float = 0.0
-    max_tokens: int = 160
+    max_tokens: int = 220
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -71,14 +71,47 @@ class LLMOpenResourcesPolicy(OpenResourcesPolicy):
         # --- call model client (network/provider boundary) ---
         response = self.client.generate(request)
 
-        # --- parse and strictly validate model output ---
-        parsed = parse_open_resources_decision(
-            response.content,
-            expected_agent_id=self.agent_id,
-            expected_t=obs.t,
-        )
+        # --- parse and strictly validate model output (retry once on malformed output) ---
+        try:
+            parsed = parse_open_resources_decision(
+                response.content,
+                expected_agent_id=self.agent_id,
+                expected_t=obs.t,
+            )
+        except LLMParseError:
+            retry_messages = messages + (
+                {
+                    "role": "user",
+                    "content": (
+                        "Your last reply was invalid. Return only one valid JSON object "
+                        "matching the required schema. Do not include markdown or extra text."
+                    ),
+                },
+            )
+            retry_request = LLMRequest(
+                model=self.config.model,
+                messages=retry_messages,
+                response_format=open_resources_response_format(),
+                temperature=self.config.temperature,
+                max_tokens=self.config.max_tokens,
+                metadata={
+                    **self.config.metadata,
+                    "run_id": self.config.run_id,
+                    "agent_id": self.agent_id,
+                    "t": obs.t,
+                    "retry_parse": True,
+                },
+            )
+            retry_response = self.client.generate(retry_request)
+            parsed = parse_open_resources_decision(
+                retry_response.content,
+                expected_agent_id=self.agent_id,
+                expected_t=obs.t,
+            )
 
         # --- persist this decision into per-agent memory ---
+        outcome = obs.info.get("last_step_self")
+        outcome_payload = dict(outcome) if isinstance(outcome, dict) else None
         self.memory_store.append(
             self.agent_id,
             MemoryEvent(
@@ -90,6 +123,7 @@ class LLMOpenResourcesPolicy(OpenResourcesPolicy):
                     "harvest": float(parsed.action.harvest),
                     "contribute": float(parsed.action.contribute),
                 },
+                outcome=outcome_payload,
                 reason=parsed.reason,
             ),
         )
