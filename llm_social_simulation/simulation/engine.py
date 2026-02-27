@@ -5,7 +5,7 @@ class SimulationEngine:
         self.agents = agents
         self.history = []
 
-    def run(self, rounds: int):
+    def run(self, rounds: int, stop_on_collapse: bool = False):
         for _ in range(rounds):
             actions = {}
 
@@ -15,5 +15,7 @@ class SimulationEngine:
 
             tick = self.gameworld.apply_actions(actions)
             self.history.append(tick)
+            if stop_on_collapse and bool(getattr(tick, "info", {}).get("collapsed")):
+                break
 
         return self.history
