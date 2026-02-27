@@ -133,11 +133,7 @@ class Gameworld:
 @dataclass(frozen=True)
 class OpenResourcesConfig:
     """
-    Contract-layer configuration for the Open Resources game.
-
-    NOTE: this only establishes interface and default bounds. The full dynamics
-    (allocation, governance pool recursion, regeneration) are intentionally not
-    implemented in this step.
+    Configuration for the Open Resources game dynamics.
     """
 
     agent_ids: tuple[AgentId, ...]
@@ -148,6 +144,8 @@ class OpenResourcesConfig:
     resource_cap: float | None = None
     regen_rate: float = 0.05
     regen_mode: str = "logistic"
+    # positive weight linking contribution ratio to stronger regeneration.
+    contribution_regen_weight: float = 0.0
     governance_reward_rate: float = 0.0
     reward_mode: str = "proportional"
     collapse_threshold: float = 0.0
@@ -226,10 +224,32 @@ class OpenResourcesGameWorld:
             P=float(config.initial_pool),
             wealth={agent_id: float(config.initial_wealth) for agent_id in config.agent_ids},
         )
+        self._last_tick: OpenResourcesTick | None = None
 
     def get_observation(self, agent_id: AgentId) -> OpenResourcesObservation:
         if agent_id not in self.state.wealth:
             raise ValueError(f"Unknown agent_id: {agent_id}")
+
+        cap = (
+            self.config.resource_cap
+            if self.config.resource_cap is not None
+            else max(self.config.initial_resource, 1.0)
+        )
+        last_step_self: dict[str, Any] | None = None
+        if self._last_tick is not None:
+            last_step_self = {
+                "t": self._last_tick.t,
+                "harvest_requested": float(self._last_tick.harvest_requested.get(agent_id, 0.0)),
+                "harvest_actual": float(self._last_tick.harvest_actual.get(agent_id, 0.0)),
+                "contribute": float(self._last_tick.contribute.get(agent_id, 0.0)),
+                "reward": float(self._last_tick.reward.get(agent_id, 0.0)),
+                "clamped": dict(
+                    self._last_tick.clamped.get(
+                        agent_id,
+                        {"harvest": False, "contribute": False},
+                    )
+                ),
+            }
 
         return OpenResourcesObservation(
             self_id=agent_id,
@@ -238,7 +258,19 @@ class OpenResourcesGameWorld:
             P=self.state.P,
             self_wealth=self.state.wealth[agent_id],
             known_agents=list(self.config.agent_ids),
-            info={"contract_only": False, "dynamics_implemented": True},
+            info={
+                "contract_only": False,
+                "dynamics_implemented": True,
+                "max_harvest_per_step": float(self.config.max_harvest_per_step),
+                "resource_cap": float(cap),
+                "regen_rate": float(self.config.regen_rate),
+                "regen_mode": self.config.regen_mode,
+                "contribution_regen_weight": float(self.config.contribution_regen_weight),
+                "governance_reward_rate": float(self.config.governance_reward_rate),
+                "reward_mode": self.config.reward_mode,
+                "collapse_threshold": float(self.config.collapse_threshold),
+                "last_step_self": last_step_self,
+            },
         )
 
     def apply_actions(self, actions: Mapping[AgentId, OpenResourcesAction]) -> OpenResourcesTick:
@@ -349,11 +381,16 @@ class OpenResourcesGameWorld:
             if self.config.resource_cap is not None
             else max(self.config.initial_resource, 1.0)
         )
+        max_possible_contrib = max(sum(wealth_before.values()), 1.0)
+        contrib_ratio = min(1.0, max(0.0, total_contrib / max_possible_contrib))
+        effective_regen_rate = self.config.regen_rate * (
+            1.0 + self.config.contribution_regen_weight * contrib_ratio
+        )
         regen_mode = self.config.regen_mode
         if regen_mode == "logistic":
-            regen_delta = self.config.regen_rate * r_mid * (1.0 - (r_mid / cap))
+            regen_delta = effective_regen_rate * r_mid * (1.0 - (r_mid / cap))
         elif regen_mode == "linear":
-            regen_delta = self.config.regen_rate * (cap - r_mid)
+            regen_delta = effective_regen_rate * (cap - r_mid)
         else:
             raise ValueError(f"Unsupported regen_mode: {regen_mode}")
 
@@ -383,8 +420,13 @@ class OpenResourcesGameWorld:
                 "H_act": h_act,
                 "allocation_scale": allocation_scale,
                 "regen_mode": regen_mode,
+                "base_regen_rate": float(self.config.regen_rate),
+                "effective_regen_rate": float(effective_regen_rate),
+                "contrib_ratio": float(contrib_ratio),
+                "contribution_regen_weight": float(self.config.contribution_regen_weight),
                 "R_mid": r_mid,
                 "collapsed": bool(r_after <= self.config.collapse_threshold),
             },
         )
+        self._last_tick = tick
         return tick

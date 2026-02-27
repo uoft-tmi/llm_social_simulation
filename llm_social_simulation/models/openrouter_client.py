@@ -7,6 +7,8 @@ from typing import Any
 from urllib import error
 from urllib import request as urlrequest
 
+from dotenv import load_dotenv
+
 from .client import LLMClient
 from .types import (
     LLMProviderError,
@@ -17,6 +19,8 @@ from .types import (
     LLMTimeoutError,
     LLMUsage,
 )
+
+load_dotenv()
 
 
 class OpenRouterClient(LLMClient):
@@ -37,7 +41,7 @@ class OpenRouterClient(LLMClient):
         http_referer: str | None = None,
         x_title: str | None = None,
     ):
-        self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
+        self.api_key = os.getenv("OPENROUTER_API_KEY") if api_key is None else api_key
         if not self.api_key:
             raise LLMProviderError("OPENROUTER_API_KEY is required for OpenRouterClient")
 
