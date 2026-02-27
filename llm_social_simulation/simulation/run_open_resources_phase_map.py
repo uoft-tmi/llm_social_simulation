@@ -190,9 +190,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build a 2D phase diagram for Open Resources.")
     parser.add_argument(
         "--agent-type",
-        choices=["greedy", "coop", "adaptive", "mixed"],
+        choices=["greedy", "coop", "adaptive", "mixed", "llm"],
         default="greedy",
     )
+    parser.add_argument(
+        "--llm-guardrails",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    parser.add_argument("--llm-model", type=str, default="openai/gpt-4o-mini")
+    parser.add_argument("--llm-temperature", type=float, default=0.0)
+    parser.add_argument("--llm-max-tokens", type=int, default=160)
     parser.add_argument("--n-agents", type=int, default=6)
     parser.add_argument("--rounds", type=int, default=200)
     parser.add_argument("--seeds", type=str, default="0,1,2,3,4")
@@ -264,7 +272,14 @@ def main(argv: list[str] | None = None) -> Path:
                         collapse_threshold=float(args.collapse_threshold),
                     )
                     world = OpenResourcesGameWorld(config=config)
-                    agents = _build_agents(agent_type=args.agent_type, config=config)
+                    agents = _build_agents(
+                        agent_type=args.agent_type,
+                        config=config,
+                        llm_guardrails=bool(args.llm_guardrails),
+                        llm_model=str(args.llm_model),
+                        llm_temperature=float(args.llm_temperature),
+                        llm_max_tokens=int(args.llm_max_tokens),
+                    )
                     engine = SimulationEngine(world, agents)
                     ticks = engine.run(
                         int(args.rounds),
