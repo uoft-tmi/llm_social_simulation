@@ -18,7 +18,8 @@ class OpenResourcesActionPayload(BaseModel):
 
 class OpenResourcesDecisionPayload(BaseModel):
     required: Literal[True]
-    self_id: int
+    self_id: int | None = None
+    agent_id: int | None = None
     t: int
     action: OpenResourcesActionPayload
     reason: str | None = None
@@ -28,6 +29,8 @@ class OpenResourcesDecisionPayload(BaseModel):
 class ParsedOpenResourcesDecision:
     action: OpenResourcesAction
     reason: str | None
+    id_filled: bool = False
+    id_source: Literal["self_id", "agent_id", "fallback"] = "self_id"
 
 
 def open_resources_response_format() -> dict[str, object]:
@@ -45,9 +48,23 @@ def parse_open_resources_decision(
     payload = strict_json_parse(content, OpenResourcesDecisionPayload)
 
     # --- enforce round/agent consistency with current observation ---
-    if payload.self_id != expected_agent_id:
+    id_filled = False
+    id_source: Literal["self_id", "agent_id", "fallback"] = "self_id"
+    if payload.self_id is not None:
+        self_id = payload.self_id
+        id_source = "self_id"
+    elif payload.agent_id is not None:
+        self_id = payload.agent_id
+        id_source = "agent_id"
+    else:
+        self_id = expected_agent_id
+        id_filled = True
+        id_source = "fallback"
+
+    # tolerate missing id from model; fill with known agent_id
+    if self_id != expected_agent_id:
         raise LLMParseError(
-            f"Response self_id mismatch: expected {expected_agent_id}, got {payload.self_id}"
+            f"Response self_id mismatch: expected {expected_agent_id}, got {self_id}"
         )
     if payload.t != expected_t:
         raise LLMParseError(f"Response t mismatch: expected {expected_t}, got {payload.t}")
@@ -59,4 +76,6 @@ def parse_open_resources_decision(
             contribute=float(payload.action.contribute),
         ),
         reason=payload.reason,
+        id_filled=id_filled,
+        id_source=id_source,
     )

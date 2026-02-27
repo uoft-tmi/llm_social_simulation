@@ -7,7 +7,10 @@ from typing import Any
 from urllib import error
 from urllib import request as urlrequest
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv  # type: ignore[import-not-found]
+except ImportError:  # pragma: no cover - optional dependency in some test envs
+    load_dotenv = None
 
 from .client import LLMClient
 from .types import (
@@ -20,7 +23,8 @@ from .types import (
     LLMUsage,
 )
 
-load_dotenv()
+if load_dotenv is not None:
+    load_dotenv()
 
 
 class OpenRouterClient(LLMClient):
