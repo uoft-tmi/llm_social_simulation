@@ -40,6 +40,9 @@ def test_get_observation_contract_shape():
     assert obs.self_wealth == 10.0
     assert obs.known_agents == [0, 1]
     assert "contract_only" in obs.info
+    assert obs.info["max_harvest_per_step"] == 5.0
+    assert obs.info["resource_cap"] == 50.0
+    assert obs.info["last_step_self"] is None
 
 
 def test_apply_actions_returns_contract_complete_tick():
@@ -76,6 +79,8 @@ def test_apply_actions_returns_contract_complete_tick():
     assert set(tick.reward.keys()) == {0, 1}
     assert set(tick.wealth.keys()) == {0, 1}
     assert set(tick.clamped.keys()) == {0, 1}
+    assert "effective_regen_rate" in tick.info
+    assert "contrib_ratio" in tick.info
 
 
 def test_apply_actions_clamps_invalid_values_and_sets_flags():
@@ -97,3 +102,21 @@ def test_apply_actions_clamps_invalid_values_and_sets_flags():
     assert tick.contribute[1] == 0.0
     assert tick.clamped[1]["harvest"] is True
     assert tick.clamped[1]["contribute"] is True
+
+
+def test_observation_includes_last_step_feedback_after_first_tick():
+    world = _world()
+
+    world.apply_actions(
+        {
+            0: OpenResourcesAction(harvest=2.0, contribute=1.0),
+            1: OpenResourcesAction(harvest=1.0, contribute=0.5),
+        }
+    )
+    obs = world.get_observation(0)
+
+    assert obs.t == 1
+    assert isinstance(obs.info["last_step_self"], dict)
+    assert obs.info["last_step_self"]["t"] == 0
+    assert obs.info["last_step_self"]["harvest_requested"] == 2.0
+    assert "clamped" in obs.info["last_step_self"]

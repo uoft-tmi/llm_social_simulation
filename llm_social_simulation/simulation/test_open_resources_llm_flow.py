@@ -12,7 +12,11 @@ from llm_social_simulation.simulation.gameworld import OpenResourcesConfig, Open
 
 
 class StructuredMockClient(LLMClient):
+    def __init__(self) -> None:
+        self.requests: list[LLMRequest] = []
+
     def generate(self, request: LLMRequest) -> LLMResponse:
+        self.requests.append(request)
         agent_id = int(request.metadata["agent_id"])
         t = int(request.metadata["t"])
         content = json.dumps(
@@ -69,3 +73,13 @@ def test_open_resources_llm_flow_runs_end_to_end() -> None:
     assert set(ticks[-1].wealth.keys()) == {0, 1}
     assert ticks[0].harvest_requested[0] == 1.0
     assert ticks[0].harvest_requested[1] == 1.1
+
+    round_two_req_agent_zero = next(
+        request
+        for request in client.requests
+        if request.metadata["agent_id"] == 0 and request.metadata["t"] == 2
+    )
+    user_payload = json.loads(round_two_req_agent_zero.messages[1]["content"])
+    memory_window = user_payload["memory_window"]
+    assert len(memory_window) >= 2
+    assert any(isinstance(event.get("outcome"), dict) for event in memory_window)

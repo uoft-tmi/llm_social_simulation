@@ -131,6 +131,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--resource-cap", type=float, default=None)
     parser.add_argument("--regen-rate", type=float, default=0.05)
     parser.add_argument("--regen-mode", choices=["logistic", "linear"], default="logistic")
+    parser.add_argument("--contribution-regen-weight", type=float, default=0.0)
     parser.add_argument("--max-harvest-per-step", type=float, default=1_000_000.0)
     parser.add_argument("--initial-wealth", type=float, default=0.0)
     parser.add_argument("--initial-pool", type=float, default=0.0)
@@ -147,6 +148,7 @@ def main() -> None:
         "resource_cap": args.resource_cap,
         "regen_rate": args.regen_rate,
         "regen_mode": args.regen_mode,
+        "contribution_regen_weight": args.contribution_regen_weight,
         "max_harvest_per_step": args.max_harvest_per_step,
         "initial_wealth": args.initial_wealth,
         "initial_pool": args.initial_pool,

@@ -79,3 +79,45 @@ def test_resource_regeneration_increases_post_harvest_resource():
     assert tick.R_after > tick.info["R_mid"]
     assert tick.R_after <= 100.0
     assert tick.info["R_mid"] == pytest.approx(tick.R_before - sum(tick.harvest_actual.values()))
+
+
+def test_contribution_regen_weight_increases_regeneration():
+    world_without_boost = OpenResourcesGameWorld(
+        OpenResourcesConfig(
+            agent_ids=(0, 1),
+            initial_resource=20.0,
+            resource_cap=100.0,
+            regen_rate=0.1,
+            regen_mode="linear",
+            contribution_regen_weight=0.0,
+            initial_wealth=10.0,
+        )
+    )
+    world_with_boost = OpenResourcesGameWorld(
+        OpenResourcesConfig(
+            agent_ids=(0, 1),
+            initial_resource=20.0,
+            resource_cap=100.0,
+            regen_rate=0.1,
+            regen_mode="linear",
+            contribution_regen_weight=1.0,
+            initial_wealth=10.0,
+        )
+    )
+
+    no_boost = world_without_boost.apply_actions(
+        {
+            0: OpenResourcesAction(harvest=0.0, contribute=0.0),
+            1: OpenResourcesAction(harvest=0.0, contribute=0.0),
+        }
+    )
+    with_boost = world_with_boost.apply_actions(
+        {
+            0: OpenResourcesAction(harvest=0.0, contribute=5.0),
+            1: OpenResourcesAction(harvest=0.0, contribute=5.0),
+        }
+    )
+
+    assert with_boost.info["contrib_ratio"] > no_boost.info["contrib_ratio"]
+    assert with_boost.info["effective_regen_rate"] > no_boost.info["effective_regen_rate"]
+    assert with_boost.R_after > no_boost.R_after
