@@ -168,3 +168,13 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+"""
+uv run python -m llm_social_simulation.simulation.run_open_resources_baseline \
+  --agent-type coop --n-agents 6 --rounds 80 --seed 0 \
+  --initial-resource 30 --resource-cap 60 \
+  --regen-rate 0.1 --regen-mode logistic \
+  --max-harvest-per-step 10 \
+  --initial-wealth 10 --governance-reward-rate 0.0 \
+  --collapse-threshold 0.5
+"""
