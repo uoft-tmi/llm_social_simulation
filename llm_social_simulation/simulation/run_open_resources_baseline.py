@@ -24,7 +24,15 @@ from llm_social_simulation.simulation.gameworld import (
 )
 
 
-def _build_agents(agent_type: str, config: OpenResourcesConfig):
+def _build_agents(
+    agent_type: str,
+    config: OpenResourcesConfig,
+    *,
+    llm_guardrails: bool = True,
+    llm_model: str = "openai/gpt-4o-mini",
+    llm_temperature: float = 0.0,
+    llm_max_tokens: int = 160,
+):
     max_h = float(config.max_harvest_per_step)
     cap = (
         float(config.resource_cap)
@@ -50,30 +58,6 @@ def _build_agents(agent_type: str, config: OpenResourcesConfig):
                 safety=0.8,
                 contrib_rate=0.02,
                 min_resource_frac=0.05,
-            )
-            for agent_id in config.agent_ids
-        ]
-    if agent_type == "llm":
-        from llm_social_simulation.models.open_resources.llm_open_resources import (
-            LLMOpenResourcesPolicy,
-            LLMOpenResourcesPolicyConfig,
-        )
-
-        from llm_social_simulation.models.openrouter_client import OpenRouterClient
-
-        client = OpenRouterClient()  # reads OPENROUTER_API_KEY env
-        run_id = f"or_llm_{random.randint(0, 10**9)}"
-
-        return [
-            LLMOpenResourcesPolicy(
-                agent_id=agent_id,
-                client=client,
-                config=LLMOpenResourcesPolicyConfig(
-                    model="openai/gpt-4o-mini",  # 先用便宜稳定的
-                    run_id=run_id,
-                    temperature=0.0,
-                    max_tokens=160,
-                ),
             )
             for agent_id in config.agent_ids
         ]
@@ -107,6 +91,40 @@ def _build_agents(agent_type: str, config: OpenResourcesConfig):
                 )
         return agents
 
+    if agent_type == "llm":
+        from llm_social_simulation.models.openrouter_client import OpenRouterClient
+        from llm_social_simulation.models.policies.guardrails import GuardrailsPolicy
+        from llm_social_simulation.models.policies.llm_open_resources import (
+            LLMOpenResourcesPolicy,
+            LLMOpenResourcesPolicyConfig,
+        )
+
+        client = OpenRouterClient()
+        run_id = f"or_llm_{random.randint(0, 10**9)}"
+        raw_policies = [
+            LLMOpenResourcesPolicy(
+                agent_id=agent_id,
+                client=client,
+                config=LLMOpenResourcesPolicyConfig(
+                    model=str(llm_model),
+                    run_id=run_id,
+                    temperature=float(llm_temperature),
+                    max_tokens=int(llm_max_tokens),
+                ),
+            )
+            for agent_id in config.agent_ids
+        ]
+        if not bool(llm_guardrails):
+            return raw_policies
+        return [
+            GuardrailsPolicy(
+                agent_id=policy.agent_id,
+                inner=policy,
+                max_harvest_per_step=max_h,
+            )
+            for policy in raw_policies
+        ]
+
     raise ValueError(f"Unsupported agent_type: {agent_type}")
 
 
@@ -117,6 +135,10 @@ def run_baseline_experiment(
     rounds: int,
     seed: int | None,
     config_overrides: dict[str, float | str | None] | None = None,
+    llm_guardrails: bool = True,
+    llm_model: str = "openai/gpt-4o-mini",
+    llm_temperature: float = 0.0,
+    llm_max_tokens: int = 160,
 ) -> tuple[list[OpenResourcesTick], dict[str, Any]]:
     if seed is not None:
         random.seed(seed)
@@ -126,7 +148,14 @@ def run_baseline_experiment(
 
     config = OpenResourcesConfig(agent_ids=agent_ids, **overrides)
     world = OpenResourcesGameWorld(config=config)
-    agents = _build_agents(agent_type=agent_type, config=config)
+    agents = _build_agents(
+        agent_type=agent_type,
+        config=config,
+        llm_guardrails=llm_guardrails,
+        llm_model=llm_model,
+        llm_temperature=llm_temperature,
+        llm_max_tokens=llm_max_tokens,
+    )
 
     engine = SimulationEngine(world, agents)
     ticks = engine.run(rounds)
@@ -166,8 +195,22 @@ def run_baseline_experiment(
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run Open Resources baseline experiments.")
     parser.add_argument(
-        "--agent-type", choices=["greedy", "coop", "adaptive", "mixed"], required=True
+        "--agent-type", choices=["greedy", "coop", "adaptive", "mixed", "llm"], required=True
     )
+    parser.add_argument(
+        "--llm-guardrails",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable safety clamps around LLM actions (recommended).",
+    )
+    parser.add_argument(
+        "--llm-model",
+        type=str,
+        default="openai/gpt-4o-mini",
+        help="OpenRouter model string when agent-type=llm",
+    )
+    parser.add_argument("--llm-temperature", type=float, default=0.0)
+    parser.add_argument("--llm-max-tokens", type=int, default=160)
     parser.add_argument("--n-agents", type=int, default=6)
     parser.add_argument("--rounds", type=int, default=50)
     parser.add_argument("--seed", type=int, default=None)
@@ -204,6 +247,10 @@ def main() -> None:
         rounds=args.rounds,
         seed=args.seed,
         config_overrides=overrides,
+        llm_guardrails=args.llm_guardrails,
+        llm_model=args.llm_model,
+        llm_temperature=args.llm_temperature,
+        llm_max_tokens=args.llm_max_tokens,
     )
     print(json.dumps(summary, indent=2, sort_keys=True))
 
