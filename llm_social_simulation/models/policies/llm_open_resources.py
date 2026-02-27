@@ -1,13 +1,5 @@
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass, field
-from typing import Any
-
-from llm_social_simulation.models.client import LLMClient
-from llm_social_simulation.models.types import LLMParseError, LLMRequest
-from llm_social_simulation.simulation.gameworld import OpenResourcesAction, OpenResourcesObservation
-
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -26,19 +18,6 @@ class LLMOpenResourcesPolicyConfig:
     model: str
     run_id: str
     temperature: float = 0.0
-    max_tokens: int = 160
-    metadata: dict[str, Any] = field(default_factory=dict)
-
-
-class LLMOpenResourcesPolicy:
-    """LLM-backed policy for Open Resources decisions with strict parsing."""
-
-    def __init__(self, *, agent_id: int, client: LLMClient, config: LLMOpenResourcesPolicyConfig):
-        self.agent_id = agent_id
-        self.client = client
-        self.config = config
-
-    def decide(self, obs: OpenResourcesObservation) -> OpenResourcesAction:
     max_tokens: int = 220
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -58,36 +37,15 @@ class LLMOpenResourcesPolicy(OpenResourcesPolicy):
         self.client = client
         self.config = config
         self.memory_store = memory_store or MemoryWindowStore()
+        self.parse_retry_count = 0
+        self.filled_id_count = 0
 
     def decide(self, obs: OpenResourcesObservation) -> OpenResourcesAction:
-        # --- validate observation belongs to this policy instance ---
         if obs.self_id != self.agent_id:
             raise ValueError(
                 f"Observation self_id {obs.self_id} does not match policy agent_id {self.agent_id}"
             )
 
-        request = LLMRequest(
-            model=self.config.model,
-            messages=(
-                {"role": "system", "content": "Return strict JSON decision for Open Resources."},
-                {
-                    "role": "user",
-                    "content": json.dumps(
-                        {
-                            "self_id": obs.self_id,
-                            "t": obs.t,
-                            "R": obs.R,
-                            "P": obs.P,
-                            "self_wealth": obs.self_wealth,
-                            "known_agents": list(obs.known_agents),
-                        },
-                        sort_keys=True,
-                    ),
-                },
-            ),
-            temperature=float(self.config.temperature),
-            max_tokens=int(self.config.max_tokens),
-        # --- build prompt messages from observation + recent memory ---
         memory_window = self.memory_store.get_window(self.agent_id)
         messages = build_open_resources_messages(
             obs,
@@ -95,7 +53,6 @@ class LLMOpenResourcesPolicy(OpenResourcesPolicy):
             run_id=self.config.run_id,
         )
 
-        # --- create provider-agnostic request envelope ---
         request = LLMRequest(
             model=self.config.model,
             messages=messages,
@@ -109,40 +66,9 @@ class LLMOpenResourcesPolicy(OpenResourcesPolicy):
                 "t": obs.t,
             },
         )
-        response = self.client.generate(request)
-        try:
-            raw = json.loads(response.content)
-        except json.JSONDecodeError as exc:
-            raise LLMParseError("LLM response is not valid JSON") from exc
 
-        if not isinstance(raw, dict):
-            raise LLMParseError("LLM response must be a JSON object")
-
-        self_id = raw.get("self_id", raw.get("agent_id"))
-        t = raw.get("t")
-        if self_id != self.agent_id:
-            raise LLMParseError(f"self_id mismatch: expected {self.agent_id}, got {self_id}")
-        if t != obs.t:
-            raise LLMParseError(f"t mismatch: expected {obs.t}, got {t}")
-
-        action = raw.get("action")
-        if not isinstance(action, dict):
-            raise LLMParseError("missing action object")
-        if "harvest" not in action or "contribute" not in action:
-            raise LLMParseError("action must include harvest and contribute")
-
-        try:
-            harvest = float(action["harvest"])
-            contribute = float(action["contribute"])
-        except (TypeError, ValueError) as exc:
-            raise LLMParseError("harvest and contribute must be numeric") from exc
-
-        return OpenResourcesAction(harvest=harvest, contribute=contribute)
-
-        # --- call model client (network/provider boundary) ---
         response = self.client.generate(request)
 
-        # --- parse and strictly validate model output (retry once on malformed output) ---
         try:
             parsed = parse_open_resources_decision(
                 response.content,
@@ -150,6 +76,7 @@ class LLMOpenResourcesPolicy(OpenResourcesPolicy):
                 expected_t=obs.t,
             )
         except LLMParseError:
+            self.parse_retry_count += 1
             retry_messages = messages + (
                 {
                     "role": "user",
@@ -180,7 +107,9 @@ class LLMOpenResourcesPolicy(OpenResourcesPolicy):
                 expected_t=obs.t,
             )
 
-        # --- persist this decision into per-agent memory ---
+        if parsed.id_filled:
+            self.filled_id_count += 1
+
         outcome = obs.info.get("last_step_self")
         outcome_payload = dict(outcome) if isinstance(outcome, dict) else None
         self.memory_store.append(
@@ -199,5 +128,4 @@ class LLMOpenResourcesPolicy(OpenResourcesPolicy):
             ),
         )
 
-        # --- return action used by OpenResourcesGameWorld.apply_actions ---
         return parsed.action
