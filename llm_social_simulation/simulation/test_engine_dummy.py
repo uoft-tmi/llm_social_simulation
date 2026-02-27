@@ -21,10 +21,8 @@ class DummyAgent:
         return {}
 
 
-# ---- Run test ----
-
-if __name__ == "__main__":
+def test_engine_runs_dummy_world() -> None:
     engine = SimulationEngine(DummyGameworld(), [DummyAgent(0), DummyAgent(1)])
-
     history = engine.run(3)
-    print("History:", history)
+    assert len(history) == 3
+    assert all("actions" in tick for tick in history)
