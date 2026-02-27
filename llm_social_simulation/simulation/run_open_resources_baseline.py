@@ -53,6 +53,30 @@ def _build_agents(agent_type: str, config: OpenResourcesConfig):
             )
             for agent_id in config.agent_ids
         ]
+    if agent_type == "llm":
+        from llm_social_simulation.models.open_resources.llm_open_resources import (
+            LLMOpenResourcesPolicy,
+            LLMOpenResourcesPolicyConfig,
+        )
+
+        from llm_social_simulation.models.openrouter_client import OpenRouterClient
+
+        client = OpenRouterClient()  # reads OPENROUTER_API_KEY env
+        run_id = f"or_llm_{random.randint(0, 10**9)}"
+
+        return [
+            LLMOpenResourcesPolicy(
+                agent_id=agent_id,
+                client=client,
+                config=LLMOpenResourcesPolicyConfig(
+                    model="openai/gpt-4o-mini",  # 先用便宜稳定的
+                    run_id=run_id,
+                    temperature=0.0,
+                    max_tokens=160,
+                ),
+            )
+            for agent_id in config.agent_ids
+        ]
     if agent_type == "adaptive":
         return [
             ResourceAwareAdaptiveAgent(
