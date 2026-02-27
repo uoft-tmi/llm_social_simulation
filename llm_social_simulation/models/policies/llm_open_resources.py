@@ -79,6 +79,8 @@ class LLMOpenResourcesPolicy(OpenResourcesPolicy):
         )
 
         # --- persist this decision into per-agent memory ---
+        outcome = obs.info.get("last_step_self")
+        outcome_payload = dict(outcome) if isinstance(outcome, dict) else None
         self.memory_store.append(
             self.agent_id,
             MemoryEvent(
@@ -90,6 +92,7 @@ class LLMOpenResourcesPolicy(OpenResourcesPolicy):
                     "harvest": float(parsed.action.harvest),
                     "contribute": float(parsed.action.contribute),
                 },
+                outcome=outcome_payload,
                 reason=parsed.reason,
             ),
         )

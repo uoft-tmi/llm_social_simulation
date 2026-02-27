@@ -12,9 +12,12 @@ class MemoryEvent:
     P: float
     self_wealth: float
     action: dict[str, float]
+    outcome: dict[str, float | int | bool | dict[str, bool]] | None = None
     reason: str | None = None
 
-    def to_prompt_item(self) -> dict[str, float | int | str | dict[str, float] | None]:
+    def to_prompt_item(
+        self,
+    ) -> dict[str, float | int | bool | str | dict[str, float] | dict[str, bool] | None]:
         return {
             "t": self.t,
             "R": self.R,
@@ -24,6 +27,7 @@ class MemoryEvent:
                 "harvest": float(self.action["harvest"]),
                 "contribute": float(self.action["contribute"]),
             },
+            "outcome": self.outcome,
             "reason": self.reason,
         }
 

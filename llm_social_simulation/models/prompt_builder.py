@@ -10,13 +10,17 @@ from .memory import MemoryEvent
 
 def _system_prompt() -> str:
     return (
-        "You are an Open Resources simulation agent. Respond with JSON only. "
-        "Do not include markdown, prose, or code fences. "
-        "Required JSON schema: "
+        "You are an Open Resources simulation agent. "
+        "Each round has four stages: contribution, harvest allocation, "
+        "governance reward, regeneration. "
+        "Choose harvest and contribute for this round only. "
+        "Goal: maximize long-term wealth while reducing collapse risk. "
+        "Respond with JSON only (no markdown or code fences). "
+        "Required output schema: "
         '{"required":true,"self_id":<int>,"t":<int>,'
         '"action":{"harvest":<float>=0,"contribute":<float>=0},'
         '"reason":<string|null>}. '
-        "The field required must be true."
+        "The field required must be true, and self_id/t must match the input."
     )
 
 
@@ -31,6 +35,7 @@ def build_open_resources_messages(
         "run_id": run_id,
         "agent_id": obs.self_id,
         "round": obs.t,
+        "decision_task": "Return action.harvest and action.contribute for this round.",
         "observation": {
             "self_id": obs.self_id,
             "t": obs.t,
