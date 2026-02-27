@@ -4,6 +4,8 @@ import argparse
 import json
 import os
 import random
+import re
+from dataclasses import dataclass
 from typing import Any
 
 from llm_social_simulation.models.client import LLMClient
@@ -50,6 +52,17 @@ def _is_schema_unsupported_provider_error(message: str) -> bool:
 
 def _fmt(value: float) -> str:
     return f"{value:.3f}"
+
+
+@dataclass
+class ModelRunFailedError(Exception):
+    """Wrap a model-run failure with a partial summary for usage/accounting."""
+
+    cause: Exception
+    summary: dict[str, Any]
+
+    def __str__(self) -> str:
+        return str(self.cause)
 
 
 class GameStatusOpenRouterClient(LLMClient):
@@ -108,24 +121,62 @@ class GameStatusOpenRouterClient(LLMClient):
 
     def _print_response_summary(self, response: LLMResponse) -> None:
         action_summary = "unparsed"
+        reason_summary = ""
         try:
-            payload = json.loads(response.content)
+            payload = self._extract_payload_for_log(response.content)
             action = payload.get("action", {})
             harvest = float(action.get("harvest", 0.0))
             contribute = float(action.get("contribute", 0.0))
             action_summary = f"harvest={harvest:.3f} contribute={contribute:.3f}"
+            reason = payload.get("reason")
+            if isinstance(reason, str) and reason.strip():
+                clean_reason = " ".join(reason.strip().split())
+                if len(clean_reason) > 140:
+                    clean_reason = clean_reason[:137] + "..."
+                reason_summary = f' reason="{clean_reason}"'
+            elif reason is None:
+                reason_summary = " reason=null"
         except Exception:
             action_summary = "invalid_json"
+            reason_summary = " reason=unavailable"
 
         #  total_tokens = response.usage.total_tokens if response.usage is not None else None
         #  token_text = f" total_tokens={total_tokens}" if total_tokens is not None else ""
         print(
             "[res] ",
             # "model={response.model} ",
-            f"{action_summary}",
+            f"{action_summary}{reason_summary}",
             # f"latency_ms={response.latency_ms:.1f}{token_text}",
             flush=True,
         )
+
+    @staticmethod
+    def _extract_payload_for_log(content: str) -> dict[str, Any]:
+        text = content.strip()
+        try:
+            payload = json.loads(text)
+            if isinstance(payload, dict):
+                return payload
+        except Exception:
+            pass
+
+        # --- recover when providers wrap JSON in markdown or extra text ---
+        if text.startswith("```"):
+            lines = text.splitlines()
+            if len(lines) >= 2:
+                body = lines[1:]
+                if body and body[-1].strip().startswith("```"):
+                    body = body[:-1]
+                text = "\n".join(body).strip()
+
+        match = re.search(r"\{[\s\S]*\}", text)
+        if not match:
+            raise ValueError("no_json_object_found")
+
+        payload = json.loads(match.group(0))
+        if not isinstance(payload, dict):
+            raise ValueError("json_payload_not_object")
+        return payload
 
     def usage_summary(self) -> dict[str, Any]:
         avg_latency_ms = (
@@ -173,9 +224,10 @@ def _run_with_round_logging(
     agents: list[LLMOpenResourcesAgent],
     rounds: int,
     show_round_log: bool,
-) -> tuple[list[OpenResourcesTick], bool]:
+) -> tuple[list[OpenResourcesTick], bool, Exception | None]:
     ticks: list[OpenResourcesTick] = []
     interrupted = False
+    error: Exception | None = None
 
     try:
         for _ in range(rounds):
@@ -202,8 +254,61 @@ def _run_with_round_logging(
     except KeyboardInterrupt:
         interrupted = True
         print("\n[run] Interrupted by user; returning partial results.", flush=True)
+    except Exception as exc:  # pragma: no cover
+        error = exc
 
-    return ticks, interrupted
+    return ticks, interrupted, error
+
+
+def _build_run_summary(
+    *,
+    model: str,
+    n_agents: int,
+    rounds: int,
+    seed: int | None,
+    temperature: float,
+    max_tokens: int,
+    timeout_s: float,
+    config: OpenResourcesConfig,
+    ticks: list[OpenResourcesTick],
+    usage: dict[str, Any],
+    terminated_early: bool,
+) -> dict[str, Any]:
+    agent_ids = tuple(range(n_agents))
+    final_tick = ticks[-1] if ticks else None
+    final_wealth = (
+        dict(final_tick.wealth)
+        if final_tick is not None
+        else {i: config.initial_wealth for i in agent_ids}
+    )
+    final_r = (
+        float(final_tick.R_after) if final_tick is not None else float(config.initial_resource)
+    )
+    final_p = float(final_tick.P_after) if final_tick is not None else float(config.initial_pool)
+    ct = collapse_time(ticks)
+
+    return {
+        "model": model,
+        "terminated_early": terminated_early,
+        "collapsed": ct is not None,
+        "collapse_time": ct,
+        "final_R": final_r,
+        "final_P": final_p,
+        "final_wealth": final_wealth,
+        "gini_final": float(gini_final_wealth(ticks)),
+        "usage": usage,
+        "params": {
+            "n_agents": n_agents,
+            "rounds": rounds,
+            "seed": seed,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "timeout_s": timeout_s,
+            "config": config.__dict__,
+        },
+        "R_series_head": resource_series(ticks)[:10],
+        "P_series_head": pool_series(ticks)[:10],
+    }
 
 
 def run_live_openrouter_experiment(
@@ -215,7 +320,7 @@ def run_live_openrouter_experiment(
     config_overrides: dict[str, float | str | None] | None = None,
     timeout_s: float = 60.0,
     temperature: float = 0.0,
-    max_tokens: int = 120,
+    max_tokens: int = 220,
     show_llm_log: bool = True,
     show_round_log: bool = True,
 ) -> tuple[list[OpenResourcesTick], dict[str, Any]]:
@@ -240,48 +345,30 @@ def run_live_openrouter_experiment(
         max_tokens=max_tokens,
     )
 
-    ticks, interrupted = _run_with_round_logging(
+    ticks, interrupted, error = _run_with_round_logging(
         world=world,
         agents=agents,
         rounds=rounds,
         show_round_log=show_round_log,
     )
 
-    final_tick = ticks[-1] if ticks else None
-    final_wealth = (
-        dict(final_tick.wealth)
-        if final_tick is not None
-        else {i: config.initial_wealth for i in agent_ids}
-    )
-    final_r = (
-        float(final_tick.R_after) if final_tick is not None else float(config.initial_resource)
-    )
-    final_p = float(final_tick.P_after) if final_tick is not None else float(config.initial_pool)
-
-    ct = collapse_time(ticks)
     usage = client.usage_summary()
-    summary = {
-        "model": model,
-        "terminated_early": interrupted,
-        "collapsed": ct is not None,
-        "collapse_time": ct,
-        "final_R": final_r,
-        "final_P": final_p,
-        "final_wealth": final_wealth,
-        "gini_final": float(gini_final_wealth(ticks)),
-        "usage": usage,
-        "params": {
-            "n_agents": n_agents,
-            "rounds": rounds,
-            "seed": seed,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "timeout_s": timeout_s,
-            "config": config.__dict__,
-        },
-        "R_series_head": resource_series(ticks)[:10],
-        "P_series_head": pool_series(ticks)[:10],
-    }
+    summary = _build_run_summary(
+        model=model,
+        n_agents=n_agents,
+        rounds=rounds,
+        seed=seed,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        timeout_s=timeout_s,
+        config=config,
+        ticks=ticks,
+        usage=usage,
+        terminated_early=interrupted,
+    )
+    if error is not None:
+        raise ModelRunFailedError(cause=error, summary=summary)
+
     return ticks, summary
 
 
@@ -319,6 +406,49 @@ def run_live_openrouter_suite(
             results.append({"model": model, "status": status, "summary": summary})
             if status == "aborted":
                 break
+        except ModelRunFailedError as exc:
+            msg = str(exc.cause)
+            if isinstance(exc.cause, LLMProviderError):
+                if "OPENROUTER_API_KEY is required" in msg:
+                    results.append(
+                        {
+                            "model": model,
+                            "status": "skipped",
+                            "reason": "missing_api_key",
+                            "error": msg,
+                            "summary": exc.summary,
+                        }
+                    )
+                elif _is_schema_unsupported_provider_error(msg):
+                    results.append(
+                        {
+                            "model": model,
+                            "status": "skipped",
+                            "reason": "unsupported_response_format",
+                            "error": msg,
+                            "summary": exc.summary,
+                        }
+                    )
+                else:
+                    results.append(
+                        {
+                            "model": model,
+                            "status": "failed",
+                            "reason": "provider_error",
+                            "error": msg,
+                            "summary": exc.summary,
+                        }
+                    )
+            else:
+                results.append(
+                    {
+                        "model": model,
+                        "status": "failed",
+                        "reason": "exception",
+                        "error": msg,
+                        "summary": exc.summary,
+                    }
+                )
         except LLMProviderError as exc:
             msg = str(exc)
             if "OPENROUTER_API_KEY is required" in msg:
@@ -429,7 +559,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--reward-mode", choices=["proportional", "equal"], default="proportional")
     parser.add_argument("--collapse-threshold", type=float, default=0.0)
     parser.add_argument("--temperature", type=float, default=0.0)
-    parser.add_argument("--max-tokens", type=int, default=120)
+    parser.add_argument("--max-tokens", type=int, default=220)
     parser.add_argument(
         "--timeout-s",
         type=float,
@@ -490,9 +620,7 @@ if __name__ == "__main__":
 """
 uv run python -m llm_social_simulation.simulation.run_openrouter_live_baseline \
   --models "google/gemini-2.5-flash-lite,\
-openai/gpt-5-nano,\
 deepseek/deepseek-v3.2,\
-qwen/qwen3-30b-a3b" \
   --n-agents 6 --rounds 80 --seed 0 \
   --initial-resource 30 --resource-cap 60 \
   --regen-rate 0.1 --regen-mode logistic \
