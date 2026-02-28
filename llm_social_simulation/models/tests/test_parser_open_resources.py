@@ -1,6 +1,6 @@
 import pytest
 
-from llm_social_simulation.models.parser import parse_open_resources_decision
+from llm_social_simulation.agents.llm.open_resources.parser import parse_open_resources_decision
 from llm_social_simulation.models.types import LLMParseError
 
 
