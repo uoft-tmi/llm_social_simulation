@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from llm_social_simulation.models.policies.guardrails import GuardrailsPolicy
+from llm_social_simulation.agents.llm.open_resources.guardrails import GuardrailsPolicy
 from llm_social_simulation.simulation.gameworld import OpenResourcesAction, OpenResourcesObservation
 
 
