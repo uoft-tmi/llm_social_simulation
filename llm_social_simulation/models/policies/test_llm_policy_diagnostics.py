@@ -1,10 +1,10 @@
 import json
 
-from llm_social_simulation.models.client import LLMClient
-from llm_social_simulation.models.policies.llm_open_resources import (
+from llm_social_simulation.agents.llm.open_resources.policy import (
     LLMOpenResourcesPolicy,
     LLMOpenResourcesPolicyConfig,
 )
+from llm_social_simulation.models.client import LLMClient
 from llm_social_simulation.models.types import LLMRequest, LLMResponse
 from llm_social_simulation.simulation.gameworld import OpenResourcesConfig, OpenResourcesGameWorld
 

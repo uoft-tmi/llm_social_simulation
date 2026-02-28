@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from llm_social_simulation.models.policies.base import OpenResourcesPolicy
+from llm_social_simulation.agents.base import OpenResourcesPolicy
 from llm_social_simulation.simulation.gameworld import OpenResourcesAction, OpenResourcesObservation
 
 

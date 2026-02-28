@@ -1,7 +1,7 @@
 import json
 
+from llm_social_simulation.agents.llm.open_resources.prompt import build_open_resources_messages
 from llm_social_simulation.models.memory import MemoryEvent
-from llm_social_simulation.models.prompt_builder import build_open_resources_messages
 from llm_social_simulation.simulation.gameworld import OpenResourcesObservation
 
 

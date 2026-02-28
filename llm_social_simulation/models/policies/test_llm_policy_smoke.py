@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from llm_social_simulation.models.mock_client import MockClient
-from llm_social_simulation.models.policies.guardrails import GuardrailsPolicy
-from llm_social_simulation.models.policies.llm_open_resources import (
+from llm_social_simulation.agents.llm.open_resources.guardrails import GuardrailsPolicy
+from llm_social_simulation.agents.llm.open_resources.policy import (
     LLMOpenResourcesPolicy,
     LLMOpenResourcesPolicyConfig,
 )
+from llm_social_simulation.models.mock_client import MockClient
 from llm_social_simulation.simulation.gameworld import OpenResourcesAction, OpenResourcesObservation
 
 
