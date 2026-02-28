@@ -227,7 +227,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action=argparse.BooleanOptionalAction,
         default=True,
     )
-    parser.add_argument("--max-workers", type=int, default=1)
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=1,
+        help="Reserved for future parallel execution. Current implementation runs sequentially.",
+    )
     return parser.parse_args(argv)
 
 
