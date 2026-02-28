@@ -1,7 +1,7 @@
 import csv
 import json
 
-from llm_social_simulation.simulation.agents_rule_based import GreedyHarvesterAgent
+from llm_social_simulation.agents.rule_based import GreedyHarvesterAgent
 from llm_social_simulation.simulation.engine import SimulationEngine
 from llm_social_simulation.simulation.gameworld import OpenResourcesConfig, OpenResourcesGameWorld
 from llm_social_simulation.simulation.run_open_resources_sweep import main

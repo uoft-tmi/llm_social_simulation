@@ -5,7 +5,7 @@ import json
 import random
 from typing import Any
 
-from llm_social_simulation.simulation.agents_rule_based import (
+from llm_social_simulation.agents.rule_based import (
     CooperativeSustainableAgent,
     GreedyHarvesterAgent,
     ResourceAwareAdaptiveAgent,
@@ -92,12 +92,12 @@ def _build_agents(
         return agents
 
     if agent_type == "llm":
-        from llm_social_simulation.models.openrouter_client import OpenRouterClient
-        from llm_social_simulation.models.policies.guardrails import GuardrailsPolicy
-        from llm_social_simulation.models.policies.llm_open_resources import (
+        from llm_social_simulation.agents.llm.open_resources.guardrails import GuardrailsPolicy
+        from llm_social_simulation.agents.llm.open_resources.policy import (
             LLMOpenResourcesPolicy,
             LLMOpenResourcesPolicyConfig,
         )
+        from llm_social_simulation.models.openrouter_client import OpenRouterClient
 
         client = OpenRouterClient()
         run_id = f"or_llm_{random.randint(0, 10**9)}"

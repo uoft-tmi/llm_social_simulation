@@ -1,13 +1,13 @@
-from llm_social_simulation.agents.rule_based import (
+from .base import OpenResourcesPolicy
+from .rule_based import (
     CooperativeSustainableAgent,
     GreedyHarvesterAgent,
-    OpenResourcesAgent,
     ResourceAwareAdaptiveAgent,
 )
 
 __all__ = [
     "CooperativeSustainableAgent",
     "GreedyHarvesterAgent",
-    "OpenResourcesAgent",
+    "OpenResourcesPolicy",
     "ResourceAwareAdaptiveAgent",
 ]
