@@ -128,6 +128,86 @@ def _build_agents(
     raise ValueError(f"Unsupported agent_type: {agent_type}")
 
 
+def _collect_llm_diagnostics(agents: list[Any], llm_guardrails: bool) -> dict[str, Any]:
+    per_agent: dict[str, dict[str, Any]] = {}
+    for idx, agent in enumerate(agents):
+        # When guardrails are enabled, policy metrics live on wrapper.inner.
+        policy = getattr(agent, "inner", agent)
+        agent_id = str(getattr(policy, "agent_id", getattr(agent, "agent_id", idx)))
+
+        client = getattr(policy, "client", None)
+        client_mode = type(client).__name__ if client is not None else "unknown"
+
+        per_agent[agent_id] = {
+            "client_mode": client_mode,
+            "llm_call_total": int(getattr(policy, "llm_call_total", 0)),
+            "llm_response_empty_total": int(getattr(policy, "llm_response_empty_total", 0)),
+            "parsed_action_zero_total": int(getattr(policy, "parsed_action_zero_total", 0)),
+            "llm_skipped_total": int(getattr(policy, "llm_skipped_total", 0)),
+            "parse_retry_count": int(getattr(policy, "parse_retry_count", 0)),
+            "filled_id_count": int(getattr(policy, "filled_id_count", 0)),
+            "fail_closed_count": int(getattr(agent, "fail_closed_count", 0)),
+            "harvest_nan_count": int(getattr(agent, "harvest_nan_count", 0)),
+            "contribute_nan_count": int(getattr(agent, "contribute_nan_count", 0)),
+            "harvest_clamp_count": int(getattr(agent, "harvest_clamp_count", 0)),
+            "contribute_clamp_count": int(getattr(agent, "contribute_clamp_count", 0)),
+            "contribute_clamp_reason_counts": dict(
+                getattr(agent, "contribute_clamp_reason_counts", {})
+            ),
+            "last_contribute_clamp_event": (
+                getattr(agent, "contribute_clamp_events", [])[-1]
+                if getattr(agent, "contribute_clamp_events", [])
+                else None
+            ),
+            "last_raw_output": getattr(policy, "last_raw_output", None),
+            "last_provider": getattr(policy, "last_provider", None),
+            "last_error": getattr(agent, "last_error", None),
+        }
+
+    entries = list(per_agent.values())
+    return {
+        "guardrails_enabled": bool(llm_guardrails),
+        "client_modes": sorted({str(entry["client_mode"]) for entry in entries}),
+        "llm_call_total": int(sum(int(entry["llm_call_total"]) for entry in entries)),
+        "llm_response_empty_total": int(
+            sum(int(entry["llm_response_empty_total"]) for entry in entries)
+        ),
+        "parsed_action_zero_total": int(
+            sum(int(entry["parsed_action_zero_total"]) for entry in entries)
+        ),
+        "llm_skipped_total": int(sum(int(entry["llm_skipped_total"]) for entry in entries)),
+        "parse_retry_total": int(sum(int(entry["parse_retry_count"]) for entry in entries)),
+        "id_filled_total": int(sum(int(entry["filled_id_count"]) for entry in entries)),
+        "guardrails_fail_closed_total": int(
+            sum(int(entry["fail_closed_count"]) for entry in entries)
+        ),
+        "guardrails_harvest_clamp_total": int(
+            sum(int(entry["harvest_clamp_count"]) for entry in entries)
+        ),
+        "guardrails_contribute_clamp_total": int(
+            sum(int(entry["contribute_clamp_count"]) for entry in entries)
+        ),
+        "guardrails_contribute_clamp_reason_totals": {
+            "nan": int(
+                sum(int(entry["contribute_clamp_reason_counts"].get("nan", 0)) for entry in entries)
+            ),
+            "negative": int(
+                sum(
+                    int(entry["contribute_clamp_reason_counts"].get("negative", 0))
+                    for entry in entries
+                )
+            ),
+            "above_max_contribute": int(
+                sum(
+                    int(entry["contribute_clamp_reason_counts"].get("above_max_contribute", 0))
+                    for entry in entries
+                )
+            ),
+        },
+        "per_agent": per_agent,
+    }
+
+
 def run_baseline_experiment(
     *,
     agent_type: str,
@@ -172,6 +252,10 @@ def run_baseline_experiment(
     final_p = float(final_tick.P_after) if final_tick is not None else float(config.initial_pool)
 
     ct = collapse_time(ticks)
+    llm_diagnostics: dict[str, Any] | None = None
+    if agent_type == "llm":
+        llm_diagnostics = _collect_llm_diagnostics(agents=agents, llm_guardrails=llm_guardrails)
+
     summary = {
         "collapsed": ct is not None,
         "collapse_time": ct,
@@ -188,6 +272,7 @@ def run_baseline_experiment(
         },
         "R_series_head": resource_series(ticks)[:10],
         "P_series_head": pool_series(ticks)[:10],
+        "llm_diagnostics": llm_diagnostics,
     }
     return ticks, summary
 

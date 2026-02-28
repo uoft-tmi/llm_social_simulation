@@ -70,3 +70,13 @@ def test_prompt_builder_keeps_memory_in_chronological_order() -> None:
     messages = build_open_resources_messages(_obs(), memory, run_id="run-2")
     user_payload = json.loads(messages[1]["content"])
     assert [m["t"] for m in user_payload["memory_window"]] == [1, 2]
+
+
+def test_prompt_builder_mentions_contribute_bounds() -> None:
+    messages = build_open_resources_messages(_obs(), [], run_id="run-3")
+    system_prompt = messages[0]["content"]
+    user_payload = json.loads(messages[1]["content"])
+
+    assert "Contribute must not exceed your current self_wealth." in system_prompt
+    assert "contribute_max_by_wealth" in user_payload["constraints"]
+    assert "recommended_contribute_cap" in user_payload["constraints"]

@@ -17,6 +17,7 @@ def _force_no_additional_props(node: object) -> None:
             node.setdefault("additionalProperties", False)
             props = node.get("properties")
             if isinstance(props, dict):
+                node["required"] = list(props.keys())
                 for child in props.values():
                     _force_no_additional_props(child)
 

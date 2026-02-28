@@ -17,7 +17,7 @@ class OpenResourcesActionPayload(BaseModel):
 
 
 class OpenResourcesDecisionPayload(BaseModel):
-    required: Literal[True]
+    required: bool | None = None
     self_id: int | None = None
     agent_id: int | None = None
     t: int
@@ -48,6 +48,9 @@ def parse_open_resources_decision(
     payload = strict_json_parse(content, OpenResourcesDecisionPayload)
 
     # --- enforce round/agent consistency with current observation ---
+    if payload.required is False:
+        raise LLMParseError("Response required field must not be false")
+
     id_filled = False
     id_source: Literal["self_id", "agent_id", "fallback"] = "self_id"
     if payload.self_id is not None:

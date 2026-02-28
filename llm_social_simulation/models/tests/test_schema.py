@@ -20,6 +20,11 @@ class NestedDecision(BaseModel):
     action: NestedAction
 
 
+class OptionalDecision(BaseModel):
+    self_id: int | None = None
+    action: NestedAction
+
+
 def test_strict_json_parse_success() -> None:
     parsed = strict_json_parse('{"action":"C","confidence":0.5}', Decision)
     assert parsed.action == "C"
@@ -53,6 +58,7 @@ def test_response_format_for_schema_forces_additional_properties_false_recursive
     response_format = response_format_for_schema(NestedDecision)
     schema = response_format["json_schema"]["schema"]  # type: ignore[index]
     assert schema["additionalProperties"] is False  # type: ignore[index]
+    assert sorted(schema["required"]) == ["action", "self_id"]  # type: ignore[index]
 
     action_schema = schema["properties"]["action"]  # type: ignore[index]
     if "$ref" in action_schema:
@@ -60,3 +66,11 @@ def test_response_format_for_schema_forces_additional_properties_false_recursive
         ref_name = str(ref).split("/")[-1]
         action_schema = schema["$defs"][ref_name]  # type: ignore[index]
     assert action_schema["additionalProperties"] is False  # type: ignore[index]
+    assert sorted(action_schema["required"]) == ["contribute", "harvest"]  # type: ignore[index]
+
+
+def test_response_format_for_schema_marks_optional_fields_as_required_for_provider() -> None:
+    response_format = response_format_for_schema(OptionalDecision)
+    schema = response_format["json_schema"]["schema"]  # type: ignore[index]
+    # Provider requires this array to include every property key.
+    assert sorted(schema["required"]) == ["action", "self_id"]  # type: ignore[index]

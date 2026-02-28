@@ -37,8 +37,36 @@ class LLMOpenResourcesPolicy(OpenResourcesPolicy):
         self.client = client
         self.config = config
         self.memory_store = memory_store or MemoryWindowStore()
+        self.llm_call_total = 0
+        self.llm_response_empty_total = 0
+        self.parsed_action_zero_total = 0
+        self.llm_skipped_total = 0
         self.parse_retry_count = 0
         self.filled_id_count = 0
+        self.last_raw_output: str | None = None
+        self.last_provider: str | None = None
+
+    def _record_response(self, content: str, raw: Any) -> None:
+        self.llm_call_total += 1
+        text = content if isinstance(content, str) else str(content)
+        self.last_raw_output = text[:200]
+        if text.strip() == "":
+            self.llm_response_empty_total += 1
+
+        provider: str | None = None
+        if isinstance(raw, dict):
+            raw_provider = raw.get("provider")
+            if isinstance(raw_provider, dict):
+                for key in ("name", "provider", "slug"):
+                    value = raw_provider.get(key)
+                    if isinstance(value, str) and value.strip():
+                        provider = value
+                        break
+                if provider is None:
+                    provider = str(raw_provider)
+            elif isinstance(raw_provider, str):
+                provider = raw_provider
+        self.last_provider = provider
 
     def decide(self, obs: OpenResourcesObservation) -> OpenResourcesAction:
         if obs.self_id != self.agent_id:
@@ -68,6 +96,7 @@ class LLMOpenResourcesPolicy(OpenResourcesPolicy):
         )
 
         response = self.client.generate(request)
+        self._record_response(response.content, response.raw)
 
         try:
             parsed = parse_open_resources_decision(
@@ -101,6 +130,7 @@ class LLMOpenResourcesPolicy(OpenResourcesPolicy):
                 },
             )
             retry_response = self.client.generate(retry_request)
+            self._record_response(retry_response.content, retry_response.raw)
             parsed = parse_open_resources_decision(
                 retry_response.content,
                 expected_agent_id=self.agent_id,
@@ -109,6 +139,8 @@ class LLMOpenResourcesPolicy(OpenResourcesPolicy):
 
         if parsed.id_filled:
             self.filled_id_count += 1
+        if parsed.action.harvest == 0.0 and parsed.action.contribute == 0.0:
+            self.parsed_action_zero_total += 1
 
         outcome = obs.info.get("last_step_self")
         outcome_payload = dict(outcome) if isinstance(outcome, dict) else None

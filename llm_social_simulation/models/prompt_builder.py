@@ -19,6 +19,9 @@ def _system_prompt() -> str:
         "Explore with small non-zero moves when safe "
         "(for example harvest 0.5-2.0 or contribute 0.1-1.0). "
         "Respond with JSON only (no markdown or code fences). "
+        "Hard constraints: harvest >= 0 and contribute >= 0. "
+        "Contribute must not exceed your current self_wealth. "
+        "Prefer contribute <= 20% of self_wealth unless there is a strong reason. "
         "Required output schema: "
         '{"required":true,"self_id":<int>,"t":<int>,'
         '"action":{"harvest":<float>=0,"contribute":<float>=0},'
@@ -42,7 +45,7 @@ def build_open_resources_messages(
         "decision_task": (
             "Return action.harvest and action.contribute for this round. "
             "Prefer informative, non-degenerate actions over always "
-            "returning zeros when risk is low."
+            "returning zeros when risk is low. Keep contribute within the provided bounds."
         ),
         "observation": {
             "self_id": obs.self_id,
@@ -57,6 +60,9 @@ def build_open_resources_messages(
         "constraints": {
             "harvest_min": 0.0,
             "contribute_min": 0.0,
+            "contribute_max_by_wealth": float(obs.self_wealth),
+            "recommended_contribute_cap_frac": 0.2,
+            "recommended_contribute_cap": 0.2 * float(obs.self_wealth),
             "required_must_be_true": True,
         },
     }

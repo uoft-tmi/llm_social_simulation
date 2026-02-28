@@ -39,10 +39,17 @@ def test_parse_open_resources_tolerates_missing_id_and_fills_expected() -> None:
     assert parsed.id_source == "fallback"
 
 
-def test_parse_open_resources_requires_true_required_field() -> None:
+def test_parse_open_resources_rejects_required_false() -> None:
     content = '{"required":false,"self_id":3,"t":12,"action":{"harvest":1.1,"contribute":0.3}}'
     with pytest.raises(LLMParseError):
         parse_open_resources_decision(content, expected_agent_id=3, expected_t=12)
+
+
+def test_parse_open_resources_tolerates_missing_required_field() -> None:
+    content = '{"self_id":3,"t":12,"action":{"harvest":1.1,"contribute":0.3}}'
+    parsed = parse_open_resources_decision(content, expected_agent_id=3, expected_t=12)
+    assert parsed.action.harvest == pytest.approx(1.1)
+    assert parsed.action.contribute == pytest.approx(0.3)
 
 
 def test_parse_open_resources_rejects_id_or_round_mismatch() -> None:
