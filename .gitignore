@@ -9,3 +9,9 @@ __pycache__/
 .idea/
 .DS_Store
 Thumbs.db
+
+outputs/phase_open_resources/
+outputs/sweep_open_resources/
+
+outputs/phase_open_resources/
+outputs/sweep_open_resources/
