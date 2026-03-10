@@ -1,0 +1,12 @@
+{"agent_type": "greedy", "collapse_time": 5, "collapsed": true, "regen_rate": 0.05, "rounds_executed": 6, "seed": 0, "y_param": "max_harvest_per_step", "y_value": 2.0}
+{"agent_type": "greedy", "collapse_time": 5, "collapsed": true, "regen_rate": 0.05, "rounds_executed": 6, "seed": 1, "y_param": "max_harvest_per_step", "y_value": 2.0}
+{"agent_type": "greedy", "collapse_time": 5, "collapsed": true, "regen_rate": 0.05, "rounds_executed": 6, "seed": 2, "y_param": "max_harvest_per_step", "y_value": 2.0}
+{"agent_type": "greedy", "collapse_time": 5, "collapsed": true, "regen_rate": 0.06, "rounds_executed": 6, "seed": 0, "y_param": "max_harvest_per_step", "y_value": 2.0}
+{"agent_type": "greedy", "collapse_time": 5, "collapsed": true, "regen_rate": 0.06, "rounds_executed": 6, "seed": 1, "y_param": "max_harvest_per_step", "y_value": 2.0}
+{"agent_type": "greedy", "collapse_time": 5, "collapsed": true, "regen_rate": 0.06, "rounds_executed": 6, "seed": 2, "y_param": "max_harvest_per_step", "y_value": 2.0}
+{"agent_type": "greedy", "collapse_time": 2, "collapsed": true, "regen_rate": 0.05, "rounds_executed": 3, "seed": 0, "y_param": "max_harvest_per_step", "y_value": 4.0}
+{"agent_type": "greedy", "collapse_time": 2, "collapsed": true, "regen_rate": 0.05, "rounds_executed": 3, "seed": 1, "y_param": "max_harvest_per_step", "y_value": 4.0}
+{"agent_type": "greedy", "collapse_time": 2, "collapsed": true, "regen_rate": 0.05, "rounds_executed": 3, "seed": 2, "y_param": "max_harvest_per_step", "y_value": 4.0}
+{"agent_type": "greedy", "collapse_time": 2, "collapsed": true, "regen_rate": 0.06, "rounds_executed": 3, "seed": 0, "y_param": "max_harvest_per_step", "y_value": 4.0}
+{"agent_type": "greedy", "collapse_time": 2, "collapsed": true, "regen_rate": 0.06, "rounds_executed": 3, "seed": 1, "y_param": "max_harvest_per_step", "y_value": 4.0}
+{"agent_type": "greedy", "collapse_time": 2, "collapsed": true, "regen_rate": 0.06, "rounds_executed": 3, "seed": 2, "y_param": "max_harvest_per_step", "y_value": 4.0}

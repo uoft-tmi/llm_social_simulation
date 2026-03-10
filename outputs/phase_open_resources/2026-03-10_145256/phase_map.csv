@@ -1,0 +1,5 @@
+agent_type,y_param,y_value,regen_rate,n_trials,collapse_prob,mean_collapse_time
+greedy,max_harvest_per_step,2.0,0.05,3,1.0,5.0
+greedy,max_harvest_per_step,2.0,0.06,3,1.0,5.0
+greedy,max_harvest_per_step,4.0,0.05,3,1.0,2.0
+greedy,max_harvest_per_step,4.0,0.06,3,1.0,2.0

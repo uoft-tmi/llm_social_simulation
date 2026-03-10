@@ -1,0 +1,44 @@
+{
+  "cli_args": {
+    "agent_type": "greedy",
+    "collapse_threshold": 0.5,
+    "governance_reward_rate": 0.0,
+    "initial_resource": 60.0,
+    "initial_wealth": 10.0,
+    "llm_guardrails": true,
+    "llm_max_tokens": 160,
+    "llm_model": "openai/gpt-4o-mini",
+    "llm_temperature": 0.0,
+    "max_harvest_grid": "2:4:2",
+    "max_harvest_per_step": 10.0,
+    "max_workers": 1,
+    "n_agents": 6,
+    "n_agents_grid": "4:12:2",
+    "outdir": "outputs/phase_open_resources",
+    "regen_mode": "logistic",
+    "regen_rate_grid": "0.05:0.06:0.01",
+    "resource_cap": 60.0,
+    "reward_mode": "proportional",
+    "rounds": 40,
+    "seeds": "0:3",
+    "stop_on_collapse": true,
+    "tag": "",
+    "y_param": "max_harvest_per_step"
+  },
+  "resolved": {
+    "regen_rate_values": [
+      0.05,
+      0.06
+    ],
+    "run_dir": "outputs/phase_open_resources/2026-03-10_145256",
+    "seeds": [
+      0,
+      1,
+      2
+    ],
+    "y_values": [
+      2.0,
+      4.0
+    ]
+  }
+}
