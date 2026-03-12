@@ -11,6 +11,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import urlparse
 
+from llm_social_simulation.api.replay_adapters import to_open_world_replay_payload
+from llm_social_simulation.simulation.open_world.runner import run_open_world_baseline
 from llm_social_simulation.simulation.run_open_resources_baseline import run_baseline_experiment
 
 
@@ -163,8 +165,31 @@ def _worker(store: RunStore, run_id: str) -> None:
         return
     request = rec.request
 
+    mode = str(request.get("mode", "open_resources"))
     store.update(run_id, status="running")
     try:
+        if mode == "open_world":
+            ticks, summary = run_open_world_baseline(
+                n_agents=int(request["n_agents"]),
+                rounds=int(request["rounds"]),
+                seed=(None if request.get("seed") is None else int(request["seed"])),
+                agent_type=str(request.get("agent_type", "rule")),
+                llm_guardrails=bool(request.get("llm_guardrails", True)),
+                llm_model=str(request.get("llm_model", "openai/gpt-4o-mini")),
+                llm_temperature=float(request.get("llm_temperature", 0.0)),
+                llm_max_tokens=int(request.get("llm_max_tokens", 220)),
+            )
+            replay = to_open_world_replay_payload(
+                run_id=run_id,
+                ticks=ticks,
+                summary=summary,
+            )
+            store.update(run_id, status="done", replay=replay, summary=summary, error=None)
+            return
+
+        if mode != "open_resources":
+            raise ValueError(f"Unsupported mode: {mode}")
+
         ticks, summary = run_baseline_experiment(
             agent_type=str(request["agent_type"]),
             n_agents=int(request["n_agents"]),
@@ -248,7 +273,18 @@ class RunAPIHandler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.BAD_REQUEST, {"error": "invalid_json"})
             return
 
-        required = {"agent_type", "n_agents", "rounds"}
+        mode = str(payload.get("mode", "open_resources"))
+        if mode not in {"open_resources", "open_world"}:
+            self._send(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "invalid_mode", "mode": mode},
+            )
+            return
+
+        payload["mode"] = mode
+        required = {"n_agents", "rounds"}
+        if mode == "open_resources":
+            required.add("agent_type")
         missing = [k for k in sorted(required) if k not in payload]
         if missing:
             self._send(HTTPStatus.BAD_REQUEST, {"error": "missing_fields", "fields": missing})
@@ -276,6 +312,7 @@ class RunAPIHandler(BaseHTTPRequestHandler):
                 return
 
             if len(parts) == 3:
+                mode = str(rec.request.get("mode", "open_resources"))
                 llm_diag: dict[str, Any] | None = None
                 if isinstance(rec.summary, dict):
                     raw_diag = rec.summary.get("llm_diagnostics")
@@ -298,6 +335,7 @@ class RunAPIHandler(BaseHTTPRequestHandler):
                         "run_id": rec.run_id,
                         "status": rec.status,
                         "error": rec.error,
+                        "mode": mode,
                         "created_at": rec.created_at,
                         "updated_at": rec.updated_at,
                         "llm_diagnostics": llm_diag,

@@ -6,11 +6,15 @@ import pytest
 
 from llm_social_simulation.simulation.open_world.types import (
     AgentState,
+    GovernanceProposal,
+    GovernanceRule,
     LocationState,
     OpenWorldAction,
+    OpenWorldCommunication,
     OpenWorldEvent,
     OpenWorldObservation,
     OpenWorldTick,
+    ReputationBelief,
 )
 
 
@@ -142,6 +146,40 @@ def test_open_world_observation_serialization_round_trip() -> None:
         nearby_locations=(forest,),
         nearby_agents=(nearby_agent,),
         recent_events=(event,),
+        recent_communications=(
+            OpenWorldCommunication(
+                t=2,
+                sender_id=1,
+                scope="local",
+                location_id="village",
+                message="I will gather soon",
+                speech_act="inform",
+                topic="resource",
+            ),
+        ),
+        public_bulletins=(
+            OpenWorldCommunication(
+                t=2,
+                sender_id=2,
+                scope="public",
+                location_id="forest",
+                message="Resource in forest is low",
+                speech_act="warn",
+                topic="resource",
+            ),
+        ),
+        reputation_beliefs=(
+            ReputationBelief(
+                subject_id=2,
+                honesty=0.7,
+                reliability=0.65,
+                confidence=0.4,
+                label="neutral",
+                evidence_count=3,
+                truthful_reports=2,
+                false_reports=1,
+            ),
+        ),
         action_space={"move_targets": ["forest"], "can_gather": True, "can_rest": True},
         info={"weather": "clear"},
     )
@@ -175,6 +213,30 @@ def test_local_observation_rejects_far_away_information() -> None:
         )
 
 
+def test_local_observation_rejects_non_local_recent_communications() -> None:
+    village, forest, self_agent, nearby_agent = _sample_world_state()
+
+    with pytest.raises(ValueError, match="current location"):
+        OpenWorldObservation(
+            self_id=1,
+            t=0,
+            self_state=self_agent,
+            location=village,
+            nearby_locations=(forest,),
+            nearby_agents=(nearby_agent,),
+            recent_communications=(
+                OpenWorldCommunication(
+                    t=0,
+                    sender_id=2,
+                    scope="local",
+                    location_id="forest",
+                    message="far local chat",
+                ),
+            ),
+            action_space={"move_targets": ["forest"]},
+        )
+
+
 def test_invalid_move_target_is_rejected() -> None:
     village, forest, self_agent, nearby_agent = _sample_world_state()
     obs = OpenWorldObservation(
@@ -190,3 +252,29 @@ def test_invalid_move_target_is_rejected() -> None:
     obs.validate_action(OpenWorldAction(kind="move", move_target="forest"))
     with pytest.raises(ValueError, match="Invalid move target"):
         obs.validate_action(OpenWorldAction(kind="move", move_target="mountain"))
+
+
+def test_governance_models_round_trip() -> None:
+    rule = GovernanceRule(
+        rule_id="rule_0001",
+        template="max_gather_per_tick",
+        params={"max_amount": 0.5},
+        source_proposal_id="proposal_0001",
+        activated_t=2,
+        expires_t=6,
+    )
+    proposal = GovernanceProposal(
+        proposal_id="proposal_0001",
+        proposer_id=1,
+        template="max_gather_per_tick",
+        params={"max_amount": 0.5},
+        status="active",
+        created_t=0,
+        voting_start_t=1,
+        voting_end_t=2,
+        activation_t=2,
+        expiry_t=6,
+        votes={2: "yes", 3: "no"},
+    )
+    assert GovernanceRule.from_dict(rule.to_dict()).to_dict() == rule.to_dict()
+    assert GovernanceProposal.from_dict(proposal.to_dict()).to_dict() == proposal.to_dict()

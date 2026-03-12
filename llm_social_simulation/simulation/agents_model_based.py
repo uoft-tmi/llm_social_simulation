@@ -1,3 +1,12 @@
+"""
+Compatibility wrapper for policy-driven Open Resources agents.
+
+Prefer constructing policies under `llm_social_simulation.agents.*`
+and passing engine-compatible objects exposing:
+- `agent_id`
+- `decide(obs) -> action`
+"""
+
 from __future__ import annotations
 
 from llm_social_simulation.agents.base import OpenResourcesPolicy

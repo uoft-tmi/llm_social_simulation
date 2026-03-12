@@ -23,6 +23,16 @@ def _normalize_unique_strings(values: Sequence[str]) -> tuple[str, ...]:
     return tuple(out)
 
 
+def _normalize_token(value: str, *, field_name: str) -> str:
+    token = str(value).strip().lower()
+    if not token:
+        raise ValueError(f"{field_name} must be a non-empty string")
+    allowed_extra = {"_", "-"}
+    if any(not (ch.isalnum() or ch in allowed_extra) for ch in token):
+        raise ValueError(f"{field_name} must contain only [a-z0-9_-]")
+    return token
+
+
 def _normalize_float_mapping(values: Mapping[str, float], *, field_name: str) -> dict[str, float]:
     out: dict[str, float] = {}
     for raw_key, raw_value in values.items():
@@ -32,6 +42,19 @@ def _normalize_float_mapping(values: Mapping[str, float], *, field_name: str) ->
             raise ValueError(f"{field_name}[{key}] must be >= 0")
         out[key] = value
     return out
+
+
+def _clamp_01(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))
+
+
+GovernanceRuleTemplate = Literal[
+    "max_gather_per_tick",
+    "zone_restriction",
+    "broadcast_restriction_by_zone",
+]
+GovernanceProposalStatus = Literal["proposed", "voting", "active", "expired"]
+GovernanceVoteChoice = Literal["yes", "no"]
 
 
 @dataclass(frozen=True)
@@ -96,15 +119,30 @@ class LocationState:
 
 @dataclass(frozen=True)
 class OpenWorldAction:
-    kind: Literal["move", "gather", "rest"]
+    kind: Literal["move", "gather", "rest", "talk_local", "broadcast", "propose_rule", "vote"]
     move_target: str | None = None
     gather_resource: str | None = None
     amount: float | None = None
+    message: str | None = None
+    speech_act: str | None = None
+    topic: str | None = None
+    rule_template: GovernanceRuleTemplate | None = None
+    rule_params: dict[str, Any] | None = None
+    proposal_id: str | None = None
+    vote_choice: GovernanceVoteChoice | None = None
     meta: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         kind = str(self.kind)
-        if kind not in {"move", "gather", "rest"}:
+        if kind not in {
+            "move",
+            "gather",
+            "rest",
+            "talk_local",
+            "broadcast",
+            "propose_rule",
+            "vote",
+        }:
             raise ValueError(f"Unsupported action kind: {kind}")
         object.__setattr__(self, "kind", kind)
         object.__setattr__(self, "meta", dict(self.meta))
@@ -115,6 +153,20 @@ class OpenWorldAction:
                 raise ValueError("gather_resource must be None for move action")
             if self.amount is not None:
                 raise ValueError("amount must be None for move action")
+            if self.message is not None:
+                raise ValueError("message must be None for move action")
+            if self.speech_act is not None:
+                raise ValueError("speech_act must be None for move action")
+            if self.topic is not None:
+                raise ValueError("topic must be None for move action")
+            if self.rule_template is not None:
+                raise ValueError("rule_template must be None for move action")
+            if self.rule_params is not None:
+                raise ValueError("rule_params must be None for move action")
+            if self.proposal_id is not None:
+                raise ValueError("proposal_id must be None for move action")
+            if self.vote_choice is not None:
+                raise ValueError("vote_choice must be None for move action")
             object.__setattr__(self, "move_target", target)
             return
 
@@ -128,8 +180,114 @@ class OpenWorldAction:
             amount = None if self.amount is None else float(self.amount)
             if amount is not None and amount <= 0.0:
                 raise ValueError("amount must be > 0 for gather action")
+            if self.message is not None:
+                raise ValueError("message must be None for gather action")
+            if self.speech_act is not None:
+                raise ValueError("speech_act must be None for gather action")
+            if self.topic is not None:
+                raise ValueError("topic must be None for gather action")
+            if self.rule_template is not None:
+                raise ValueError("rule_template must be None for gather action")
+            if self.rule_params is not None:
+                raise ValueError("rule_params must be None for gather action")
+            if self.proposal_id is not None:
+                raise ValueError("proposal_id must be None for gather action")
+            if self.vote_choice is not None:
+                raise ValueError("vote_choice must be None for gather action")
             object.__setattr__(self, "gather_resource", resource)
             object.__setattr__(self, "amount", amount)
+            return
+
+        if kind in {"talk_local", "broadcast"}:
+            if self.move_target is not None:
+                raise ValueError("move_target must be None for communication action")
+            if self.gather_resource is not None:
+                raise ValueError("gather_resource must be None for communication action")
+            if self.amount is not None:
+                raise ValueError("amount must be None for communication action")
+            if self.rule_template is not None:
+                raise ValueError("rule_template must be None for communication action")
+            if self.rule_params is not None:
+                raise ValueError("rule_params must be None for communication action")
+            if self.proposal_id is not None:
+                raise ValueError("proposal_id must be None for communication action")
+            if self.vote_choice is not None:
+                raise ValueError("vote_choice must be None for communication action")
+            message = str(self.message or "").strip()
+            if not message:
+                raise ValueError("message must be a non-empty string for communication action")
+            speech_act = _normalize_token(
+                str(self.speech_act or "inform"),
+                field_name="speech_act",
+            )
+            topic = _normalize_token(str(self.topic or "resource"), field_name="topic")
+            object.__setattr__(self, "message", message)
+            object.__setattr__(self, "speech_act", speech_act)
+            object.__setattr__(self, "topic", topic)
+            return
+
+        if kind == "propose_rule":
+            if self.move_target is not None:
+                raise ValueError("move_target must be None for propose_rule action")
+            if self.gather_resource is not None:
+                raise ValueError("gather_resource must be None for propose_rule action")
+            if self.amount is not None:
+                raise ValueError("amount must be None for propose_rule action")
+            if self.message is not None:
+                raise ValueError("message must be None for propose_rule action")
+            if self.speech_act is not None:
+                raise ValueError("speech_act must be None for propose_rule action")
+            if self.topic is not None:
+                raise ValueError("topic must be None for propose_rule action")
+            if self.proposal_id is not None:
+                raise ValueError("proposal_id must be None for propose_rule action")
+            if self.vote_choice is not None:
+                raise ValueError("vote_choice must be None for propose_rule action")
+
+            template = _normalize_token(
+                str(self.rule_template or ""),
+                field_name="rule_template",
+            )
+            if template not in {
+                "max_gather_per_tick",
+                "zone_restriction",
+                "broadcast_restriction_by_zone",
+            }:
+                raise ValueError(f"Unsupported rule_template: {template}")
+            raw_params = {} if self.rule_params is None else dict(self.rule_params)
+            object.__setattr__(self, "rule_template", template)
+            object.__setattr__(self, "rule_params", raw_params)
+            return
+
+        if kind == "vote":
+            if self.move_target is not None:
+                raise ValueError("move_target must be None for vote action")
+            if self.gather_resource is not None:
+                raise ValueError("gather_resource must be None for vote action")
+            if self.amount is not None:
+                raise ValueError("amount must be None for vote action")
+            if self.message is not None:
+                raise ValueError("message must be None for vote action")
+            if self.speech_act is not None:
+                raise ValueError("speech_act must be None for vote action")
+            if self.topic is not None:
+                raise ValueError("topic must be None for vote action")
+            if self.rule_template is not None:
+                raise ValueError("rule_template must be None for vote action")
+            if self.rule_params is not None:
+                raise ValueError("rule_params must be None for vote action")
+            proposal_id = _normalize_string_id(
+                str(self.proposal_id or ""),
+                field_name="proposal_id",
+            )
+            vote_choice = _normalize_token(
+                str(self.vote_choice or ""),
+                field_name="vote_choice",
+            )
+            if vote_choice not in {"yes", "no"}:
+                raise ValueError("vote_choice must be one of {'yes', 'no'}")
+            object.__setattr__(self, "proposal_id", proposal_id)
+            object.__setattr__(self, "vote_choice", vote_choice)
             return
 
         # rest
@@ -139,6 +297,20 @@ class OpenWorldAction:
             raise ValueError("gather_resource must be None for rest action")
         if self.amount is not None:
             raise ValueError("amount must be None for rest action")
+        if self.message is not None:
+            raise ValueError("message must be None for rest action")
+        if self.speech_act is not None:
+            raise ValueError("speech_act must be None for rest action")
+        if self.topic is not None:
+            raise ValueError("topic must be None for rest action")
+        if self.rule_template is not None:
+            raise ValueError("rule_template must be None for rest action")
+        if self.rule_params is not None:
+            raise ValueError("rule_params must be None for rest action")
+        if self.proposal_id is not None:
+            raise ValueError("proposal_id must be None for rest action")
+        if self.vote_choice is not None:
+            raise ValueError("vote_choice must be None for rest action")
 
     def validate_move_target(self, allowed_targets: Sequence[str]) -> None:
         if self.kind != "move":
@@ -155,6 +327,13 @@ class OpenWorldAction:
             "move_target": self.move_target,
             "gather_resource": self.gather_resource,
             "amount": self.amount,
+            "message": self.message,
+            "speech_act": self.speech_act,
+            "topic": self.topic,
+            "rule_template": self.rule_template,
+            "rule_params": None if self.rule_params is None else dict(self.rule_params),
+            "proposal_id": self.proposal_id,
+            "vote_choice": self.vote_choice,
             "meta": dict(self.meta),
         }
 
@@ -165,6 +344,15 @@ class OpenWorldAction:
             move_target=payload.get("move_target"),
             gather_resource=payload.get("gather_resource"),
             amount=payload.get("amount"),
+            message=payload.get("message"),
+            speech_act=payload.get("speech_act"),
+            topic=payload.get("topic"),
+            rule_template=payload.get("rule_template"),
+            rule_params=(
+                None if payload.get("rule_params") is None else dict(payload.get("rule_params", {}))
+            ),
+            proposal_id=payload.get("proposal_id"),
+            vote_choice=payload.get("vote_choice"),
             meta=dict(payload.get("meta", {})),
         )
 
@@ -239,10 +427,317 @@ class AgentState:
 
 
 @dataclass(frozen=True)
+class ReputationBelief:
+    subject_id: int
+    honesty: float = 0.5
+    reliability: float = 0.5
+    confidence: float = 0.0
+    label: Literal["unknown", "neutral", "trusted", "suspicious"] = "unknown"
+    evidence_count: int = 0
+    truthful_reports: int = 0
+    false_reports: int = 0
+    meta: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        subject_id = int(self.subject_id)
+        honesty = _clamp_01(self.honesty)
+        reliability = _clamp_01(self.reliability)
+        confidence = _clamp_01(self.confidence)
+        label = str(self.label)
+        if label not in {"unknown", "neutral", "trusted", "suspicious"}:
+            raise ValueError(f"Unsupported reputation label: {label}")
+        evidence_count = int(self.evidence_count)
+        truthful_reports = int(self.truthful_reports)
+        false_reports = int(self.false_reports)
+        if evidence_count < 0:
+            raise ValueError("evidence_count must be >= 0")
+        if truthful_reports < 0:
+            raise ValueError("truthful_reports must be >= 0")
+        if false_reports < 0:
+            raise ValueError("false_reports must be >= 0")
+
+        object.__setattr__(self, "subject_id", subject_id)
+        object.__setattr__(self, "honesty", honesty)
+        object.__setattr__(self, "reliability", reliability)
+        object.__setattr__(self, "confidence", confidence)
+        object.__setattr__(self, "label", label)
+        object.__setattr__(self, "evidence_count", evidence_count)
+        object.__setattr__(self, "truthful_reports", truthful_reports)
+        object.__setattr__(self, "false_reports", false_reports)
+        object.__setattr__(self, "meta", dict(self.meta))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "subject_id": self.subject_id,
+            "honesty": self.honesty,
+            "reliability": self.reliability,
+            "confidence": self.confidence,
+            "label": self.label,
+            "evidence_count": self.evidence_count,
+            "truthful_reports": self.truthful_reports,
+            "false_reports": self.false_reports,
+            "meta": dict(self.meta),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> ReputationBelief:
+        return cls(
+            subject_id=int(payload["subject_id"]),
+            honesty=float(payload.get("honesty", 0.5)),
+            reliability=float(payload.get("reliability", 0.5)),
+            confidence=float(payload.get("confidence", 0.0)),
+            label=str(payload.get("label", "unknown")),
+            evidence_count=int(payload.get("evidence_count", 0)),
+            truthful_reports=int(payload.get("truthful_reports", 0)),
+            false_reports=int(payload.get("false_reports", 0)),
+            meta=dict(payload.get("meta", {})),
+        )
+
+
+@dataclass(frozen=True)
+class GovernanceRule:
+    rule_id: str
+    template: GovernanceRuleTemplate
+    params: dict[str, Any]
+    source_proposal_id: str
+    activated_t: int
+    expires_t: int
+    meta: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        rule_id = _normalize_string_id(self.rule_id, field_name="rule_id")
+        template = _normalize_token(self.template, field_name="template")
+        if template not in {
+            "max_gather_per_tick",
+            "zone_restriction",
+            "broadcast_restriction_by_zone",
+        }:
+            raise ValueError(f"Unsupported governance rule template: {template}")
+        source_proposal_id = _normalize_string_id(
+            self.source_proposal_id,
+            field_name="source_proposal_id",
+        )
+        activated_t = int(self.activated_t)
+        expires_t = int(self.expires_t)
+        if activated_t < 0:
+            raise ValueError("activated_t must be >= 0")
+        if expires_t <= activated_t:
+            raise ValueError("expires_t must be > activated_t")
+
+        object.__setattr__(self, "rule_id", rule_id)
+        object.__setattr__(self, "template", template)
+        object.__setattr__(self, "params", dict(self.params))
+        object.__setattr__(self, "source_proposal_id", source_proposal_id)
+        object.__setattr__(self, "activated_t", activated_t)
+        object.__setattr__(self, "expires_t", expires_t)
+        object.__setattr__(self, "meta", dict(self.meta))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "rule_id": self.rule_id,
+            "template": self.template,
+            "params": dict(self.params),
+            "source_proposal_id": self.source_proposal_id,
+            "activated_t": self.activated_t,
+            "expires_t": self.expires_t,
+            "meta": dict(self.meta),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> GovernanceRule:
+        return cls(
+            rule_id=str(payload["rule_id"]),
+            template=str(payload["template"]),
+            params=dict(payload.get("params", {})),
+            source_proposal_id=str(payload["source_proposal_id"]),
+            activated_t=int(payload["activated_t"]),
+            expires_t=int(payload["expires_t"]),
+            meta=dict(payload.get("meta", {})),
+        )
+
+
+@dataclass(frozen=True)
+class GovernanceProposal:
+    proposal_id: str
+    proposer_id: int
+    template: GovernanceRuleTemplate
+    params: dict[str, Any]
+    status: GovernanceProposalStatus
+    created_t: int
+    voting_start_t: int | None = None
+    voting_end_t: int | None = None
+    activation_t: int | None = None
+    expiry_t: int | None = None
+    votes: dict[int, GovernanceVoteChoice] = field(default_factory=dict)
+    meta: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        proposal_id = _normalize_string_id(self.proposal_id, field_name="proposal_id")
+        proposer_id = int(self.proposer_id)
+        template = _normalize_token(self.template, field_name="template")
+        if template not in {
+            "max_gather_per_tick",
+            "zone_restriction",
+            "broadcast_restriction_by_zone",
+        }:
+            raise ValueError(f"Unsupported governance proposal template: {template}")
+        status = _normalize_token(self.status, field_name="status")
+        if status not in {"proposed", "voting", "active", "expired"}:
+            raise ValueError(f"Unsupported governance proposal status: {status}")
+        created_t = int(self.created_t)
+        if created_t < 0:
+            raise ValueError("created_t must be >= 0")
+
+        votes: dict[int, GovernanceVoteChoice] = {}
+        for raw_agent_id, raw_vote in dict(self.votes).items():
+            voter_id = int(raw_agent_id)
+            vote = _normalize_token(str(raw_vote), field_name="vote_choice")
+            if vote not in {"yes", "no"}:
+                raise ValueError("votes must be one of {'yes', 'no'}")
+            votes[voter_id] = vote
+
+        object.__setattr__(self, "proposal_id", proposal_id)
+        object.__setattr__(self, "proposer_id", proposer_id)
+        object.__setattr__(self, "template", template)
+        object.__setattr__(self, "params", dict(self.params))
+        object.__setattr__(self, "status", status)
+        object.__setattr__(self, "created_t", created_t)
+        object.__setattr__(
+            self,
+            "voting_start_t",
+            None if self.voting_start_t is None else int(self.voting_start_t),
+        )
+        object.__setattr__(
+            self,
+            "voting_end_t",
+            None if self.voting_end_t is None else int(self.voting_end_t),
+        )
+        object.__setattr__(
+            self,
+            "activation_t",
+            None if self.activation_t is None else int(self.activation_t),
+        )
+        object.__setattr__(
+            self,
+            "expiry_t",
+            None if self.expiry_t is None else int(self.expiry_t),
+        )
+        object.__setattr__(self, "votes", votes)
+        object.__setattr__(self, "meta", dict(self.meta))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "proposal_id": self.proposal_id,
+            "proposer_id": self.proposer_id,
+            "template": self.template,
+            "params": dict(self.params),
+            "status": self.status,
+            "created_t": self.created_t,
+            "voting_start_t": self.voting_start_t,
+            "voting_end_t": self.voting_end_t,
+            "activation_t": self.activation_t,
+            "expiry_t": self.expiry_t,
+            "votes": {str(agent_id): vote for agent_id, vote in self.votes.items()},
+            "meta": dict(self.meta),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> GovernanceProposal:
+        raw_votes = dict(payload.get("votes", {}))
+        votes = {int(agent_id): str(vote) for agent_id, vote in raw_votes.items()}
+        return cls(
+            proposal_id=str(payload["proposal_id"]),
+            proposer_id=int(payload["proposer_id"]),
+            template=str(payload["template"]),
+            params=dict(payload.get("params", {})),
+            status=str(payload.get("status", "proposed")),
+            created_t=int(payload["created_t"]),
+            voting_start_t=payload.get("voting_start_t"),
+            voting_end_t=payload.get("voting_end_t"),
+            activation_t=payload.get("activation_t"),
+            expiry_t=payload.get("expiry_t"),
+            votes=votes,
+            meta=dict(payload.get("meta", {})),
+        )
+
+
+@dataclass(frozen=True)
+class OpenWorldCommunication:
+    t: int
+    sender_id: int
+    scope: Literal["local", "public"]
+    location_id: str
+    message: str
+    speech_act: str = "inform"
+    topic: str = "resource"
+    meta: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        t = int(self.t)
+        if t < 0:
+            raise ValueError("t must be >= 0")
+        sender_id = int(self.sender_id)
+        scope = str(self.scope)
+        if scope not in {"local", "public"}:
+            raise ValueError(f"Unsupported communication scope: {scope}")
+        location_id = _normalize_string_id(self.location_id, field_name="location_id")
+        message = str(self.message).strip()
+        if not message:
+            raise ValueError("message must be a non-empty string")
+        speech_act = _normalize_token(self.speech_act, field_name="speech_act")
+        topic = _normalize_token(self.topic, field_name="topic")
+
+        object.__setattr__(self, "t", t)
+        object.__setattr__(self, "sender_id", sender_id)
+        object.__setattr__(self, "scope", scope)
+        object.__setattr__(self, "location_id", location_id)
+        object.__setattr__(self, "message", message)
+        object.__setattr__(self, "speech_act", speech_act)
+        object.__setattr__(self, "topic", topic)
+        object.__setattr__(self, "meta", dict(self.meta))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "t": self.t,
+            "sender_id": self.sender_id,
+            "scope": self.scope,
+            "location_id": self.location_id,
+            "message": self.message,
+            "speech_act": self.speech_act,
+            "topic": self.topic,
+            "meta": dict(self.meta),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> OpenWorldCommunication:
+        return cls(
+            t=int(payload["t"]),
+            sender_id=int(payload["sender_id"]),
+            scope=str(payload["scope"]),
+            location_id=str(payload["location_id"]),
+            message=str(payload["message"]),
+            speech_act=str(payload.get("speech_act", "inform")),
+            topic=str(payload.get("topic", "resource")),
+            meta=dict(payload.get("meta", {})),
+        )
+
+
+@dataclass(frozen=True)
 class OpenWorldEvent:
     t: int
     agent_id: int
-    kind: Literal["move", "gather", "rest", "invalid_action"]
+    kind: Literal[
+        "move",
+        "gather",
+        "rest",
+        "talk_local",
+        "broadcast",
+        "propose_rule",
+        "vote",
+        "rule_activated",
+        "rule_expired",
+        "invalid_action",
+    ]
     location_id: str
     action: OpenWorldAction | None = None
     valid: bool = True
@@ -255,7 +750,18 @@ class OpenWorldEvent:
             raise ValueError("t must be >= 0")
         agent_id = int(self.agent_id)
         kind = str(self.kind)
-        if kind not in {"move", "gather", "rest", "invalid_action"}:
+        if kind not in {
+            "move",
+            "gather",
+            "rest",
+            "talk_local",
+            "broadcast",
+            "propose_rule",
+            "vote",
+            "rule_activated",
+            "rule_expired",
+            "invalid_action",
+        }:
             raise ValueError(f"Unsupported event kind: {kind}")
         location_id = _normalize_string_id(self.location_id, field_name="location_id")
         valid = bool(self.valid)
@@ -267,7 +773,8 @@ class OpenWorldEvent:
 
         if (
             self.action is not None
-            and kind in {"move", "gather", "rest"}
+            and kind
+            in {"move", "gather", "rest", "talk_local", "broadcast", "propose_rule", "vote"}
             and self.action.kind != kind
         ):
             raise ValueError("event kind/action kind mismatch")
@@ -316,6 +823,11 @@ class OpenWorldObservation:
     nearby_locations: tuple[LocationState, ...] = ()
     nearby_agents: tuple[AgentState, ...] = ()
     recent_events: tuple[OpenWorldEvent, ...] = ()
+    recent_communications: tuple[OpenWorldCommunication, ...] = ()
+    public_bulletins: tuple[OpenWorldCommunication, ...] = ()
+    reputation_beliefs: tuple[ReputationBelief, ...] = ()
+    pending_proposals: tuple[GovernanceProposal, ...] = ()
+    active_rules: tuple[GovernanceRule, ...] = ()
     action_space: dict[str, Any] = field(default_factory=dict)
     info: dict[str, Any] = field(default_factory=dict)
 
@@ -332,6 +844,11 @@ class OpenWorldObservation:
         nearby_locations = tuple(self.nearby_locations)
         nearby_agents = tuple(self.nearby_agents)
         recent_events = tuple(self.recent_events)
+        recent_communications = tuple(self.recent_communications)
+        public_bulletins = tuple(self.public_bulletins)
+        reputation_beliefs = tuple(self.reputation_beliefs)
+        pending_proposals = tuple(self.pending_proposals)
+        active_rules = tuple(self.active_rules)
 
         local_location_ids = {self.location.id, *(loc.id for loc in nearby_locations)}
         for agent in nearby_agents:
@@ -344,6 +861,40 @@ class OpenWorldObservation:
             if event.location_id not in local_location_ids:
                 raise ValueError("recent_events contains far-away event information")
 
+        for communication in recent_communications:
+            if communication.scope != "local":
+                raise ValueError(
+                    "recent_communications must contain local-scope communication only"
+                )
+            if communication.location_id != self.location.id:
+                raise ValueError("recent_communications must be in the current location only")
+
+        for bulletin in public_bulletins:
+            if bulletin.scope != "public":
+                raise ValueError("public_bulletins must contain public-scope communication only")
+
+        seen_subject_ids: set[int] = set()
+        for belief in reputation_beliefs:
+            if belief.subject_id == self_id:
+                raise ValueError("reputation_beliefs must not include self")
+            if belief.subject_id in seen_subject_ids:
+                raise ValueError("reputation_beliefs must contain unique subject_id values")
+            seen_subject_ids.add(belief.subject_id)
+
+        seen_proposal_ids: set[str] = set()
+        for proposal in pending_proposals:
+            if proposal.proposal_id in seen_proposal_ids:
+                raise ValueError("pending_proposals must contain unique proposal_id values")
+            seen_proposal_ids.add(proposal.proposal_id)
+            if proposal.status not in {"proposed", "voting"}:
+                raise ValueError("pending_proposals must only include proposed or voting items")
+
+        seen_rule_ids: set[str] = set()
+        for rule in active_rules:
+            if rule.rule_id in seen_rule_ids:
+                raise ValueError("active_rules must contain unique rule_id values")
+            seen_rule_ids.add(rule.rule_id)
+
         action_space = dict(self.action_space)
         move_targets_raw = action_space.get("move_targets", list(self.location.neighbors))
         move_targets = _normalize_unique_strings(tuple(str(item) for item in move_targets_raw))
@@ -355,12 +906,31 @@ class OpenWorldObservation:
         action_space["move_targets"] = list(move_targets)
         action_space.setdefault("can_gather", True)
         action_space.setdefault("can_rest", True)
+        action_space.setdefault("can_talk_local", True)
+        action_space.setdefault("can_broadcast", True)
+        action_space.setdefault("can_propose_rule", True)
+        action_space.setdefault("can_vote", False)
+        action_space.setdefault("max_message_length", 160)
+        action_space.setdefault(
+            "rule_templates",
+            [
+                "max_gather_per_tick",
+                "zone_restriction",
+                "broadcast_restriction_by_zone",
+            ],
+        )
+        action_space.setdefault("votable_proposal_ids", [])
 
         object.__setattr__(self, "self_id", self_id)
         object.__setattr__(self, "t", t)
         object.__setattr__(self, "nearby_locations", nearby_locations)
         object.__setattr__(self, "nearby_agents", nearby_agents)
         object.__setattr__(self, "recent_events", recent_events)
+        object.__setattr__(self, "recent_communications", recent_communications)
+        object.__setattr__(self, "public_bulletins", public_bulletins)
+        object.__setattr__(self, "reputation_beliefs", reputation_beliefs)
+        object.__setattr__(self, "pending_proposals", pending_proposals)
+        object.__setattr__(self, "active_rules", active_rules)
         object.__setattr__(self, "action_space", action_space)
         object.__setattr__(self, "info", dict(self.info))
 
@@ -376,6 +946,22 @@ class OpenWorldObservation:
             raise ValueError("gather is disabled in this observation")
         if action.kind == "rest" and not bool(self.action_space.get("can_rest", True)):
             raise ValueError("rest is disabled in this observation")
+        if action.kind == "talk_local" and not bool(self.action_space.get("can_talk_local", True)):
+            raise ValueError("talk_local is disabled in this observation")
+        if action.kind == "broadcast" and not bool(self.action_space.get("can_broadcast", True)):
+            raise ValueError("broadcast is disabled in this observation")
+        if action.kind == "propose_rule" and not bool(
+            self.action_space.get("can_propose_rule", True)
+        ):
+            raise ValueError("propose_rule is disabled in this observation")
+        if action.kind == "vote":
+            if not bool(self.action_space.get("can_vote", True)):
+                raise ValueError("vote is disabled in this observation")
+            votable_ids = {str(item) for item in self.action_space.get("votable_proposal_ids", ())}
+            if action.proposal_id not in votable_ids:
+                raise ValueError(
+                    "vote target is not in observation action_space.votable_proposal_ids"
+                )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -386,6 +972,13 @@ class OpenWorldObservation:
             "nearby_locations": [loc.to_dict() for loc in self.nearby_locations],
             "nearby_agents": [agent.to_dict() for agent in self.nearby_agents],
             "recent_events": [event.to_dict() for event in self.recent_events],
+            "recent_communications": [
+                communication.to_dict() for communication in self.recent_communications
+            ],
+            "public_bulletins": [bulletin.to_dict() for bulletin in self.public_bulletins],
+            "reputation_beliefs": [belief.to_dict() for belief in self.reputation_beliefs],
+            "pending_proposals": [proposal.to_dict() for proposal in self.pending_proposals],
+            "active_rules": [rule.to_dict() for rule in self.active_rules],
             "action_space": dict(self.action_space),
             "info": dict(self.info),
         }
@@ -405,6 +998,23 @@ class OpenWorldObservation:
             ),
             recent_events=tuple(
                 OpenWorldEvent.from_dict(item) for item in payload.get("recent_events", ())
+            ),
+            recent_communications=tuple(
+                OpenWorldCommunication.from_dict(item)
+                for item in payload.get("recent_communications", ())
+            ),
+            public_bulletins=tuple(
+                OpenWorldCommunication.from_dict(item)
+                for item in payload.get("public_bulletins", ())
+            ),
+            reputation_beliefs=tuple(
+                ReputationBelief.from_dict(item) for item in payload.get("reputation_beliefs", ())
+            ),
+            pending_proposals=tuple(
+                GovernanceProposal.from_dict(item) for item in payload.get("pending_proposals", ())
+            ),
+            active_rules=tuple(
+                GovernanceRule.from_dict(item) for item in payload.get("active_rules", ())
             ),
             action_space=dict(payload.get("action_space", {})),
             info=dict(payload.get("info", {})),

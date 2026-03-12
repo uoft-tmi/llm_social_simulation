@@ -1,4 +1,4 @@
-import { TickState } from "@/lib/replay/replayTypes";
+import { ReplayMode, TickState } from "@/lib/replay/replayTypes";
 
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
@@ -12,12 +12,24 @@ function StatRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function SimulationMetricsPanel({ tick }: { tick: TickState | null }) {
+function maybeRow(label: string, value: number | undefined, digits = 2) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return <StatRow label={label} value={value.toFixed(digits)} />;
+}
+
+export function SimulationMetricsPanel({
+  tick,
+  mode
+}: {
+  tick: TickState | null;
+  mode: ReplayMode;
+}) {
   if (!tick) {
     return <Card title="Global Metrics">No tick loaded.</Card>;
   }
 
   const { world, metrics } = tick;
+  const isOpenWorld = mode === "open_world";
 
   return (
     <Card
@@ -33,6 +45,17 @@ export function SimulationMetricsPanel({ tick }: { tick: TickState | null }) {
         <StatRow label="Harvest Act" value={metrics.totalHarvestActual.toFixed(2)} />
         <StatRow label="Contribution" value={metrics.totalContribution.toFixed(2)} />
         <StatRow label="Reward" value={metrics.totalReward.toFixed(2)} />
+        {isOpenWorld ? (
+          <>
+            {maybeRow("Comm Influence", metrics.communicationInfluencedActionTotal, 0)}
+            {maybeRow("Trusted Influence", metrics.trustedInfluenceActionTotal, 0)}
+            {maybeRow("Suspicious Discount", metrics.suspiciousDiscountActionTotal, 0)}
+            {maybeRow("Avg Honesty Belief", metrics.averageHonestyBelief, 3)}
+            {maybeRow("Avg Belief Confidence", metrics.averageBeliefConfidence, 3)}
+            {maybeRow("Truthful Reports", metrics.validatedTruthfulReports, 0)}
+            {maybeRow("False Reports", metrics.validatedFalseReports, 0)}
+          </>
+        ) : null}
       </div>
     </Card>
   );

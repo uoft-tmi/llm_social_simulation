@@ -1,4 +1,10 @@
-import { AgentState, TickState } from "@/lib/replay/replayTypes";
+import {
+  AgentState,
+  ReplayEvent,
+  ReplayMode,
+  TickCommunication,
+  TickState
+} from "@/lib/replay/replayTypes";
 
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
@@ -17,17 +23,41 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+function latestAgentEvent(tick: TickState | null, agentId: number): ReplayEvent | null {
+  if (!tick?.events) return null;
+  for (let idx = tick.events.length - 1; idx >= 0; idx -= 1) {
+    const event = tick.events[idx];
+    if (event.agent_id === agentId) return event;
+  }
+  return null;
+}
+
+function agentMessages(tick: TickState | null, agentId: number): TickCommunication[] {
+  if (!tick?.communications) return [];
+  return tick.communications.filter((entry) => entry.agentId === agentId).slice(-5);
+}
+
 export function AgentInspector({
   tick,
   selectedAgentId,
-  hoveredAgentId
+  hoveredAgentId,
+  mode
 }: {
   tick: TickState | null;
   selectedAgentId: number | null;
   hoveredAgentId: number | null;
+  mode: ReplayMode;
 }) {
   const chosenId = selectedAgentId ?? hoveredAgentId;
   const agent = findAgent(tick, chosenId);
+  const event = agent ? latestAgentEvent(tick, agent.id) : null;
+  const payload = event?.payload ?? {};
+  const debugRaw = payload["decision_debug"];
+  const decisionDebug = typeof debugRaw === "object" && debugRaw !== null
+    ? (debugRaw as Record<string, unknown>)
+    : null;
+  const isOpenWorld = mode === "open_world";
+  const messages = agent ? agentMessages(tick, agent.id) : [];
 
   return (
     <Card
@@ -52,6 +82,15 @@ export function AgentInspector({
             <Row label="Reward" value={agent.action.reward.toFixed(2)} />
             <Row label="Clamp harvest" value={String(Boolean(agent.clamped?.harvest))} />
             <Row label="Clamp contribute" value={String(Boolean(agent.clamped?.contribute))} />
+            {isOpenWorld ? (
+              <>
+                <Row label="Location" value={agent.state?.locationId ?? "-"} />
+                <Row
+                  label="Energy"
+                  value={typeof agent.state?.energy === "number" ? agent.state.energy.toFixed(2) : "-"}
+                />
+              </>
+            ) : null}
           </div>
 
           <div>
@@ -60,6 +99,71 @@ export function AgentInspector({
               {agent.reason ?? "No reason text available."}
             </p>
           </div>
+
+          {isOpenWorld ? (
+            <>
+              <div>
+                <div className="mb-1 text-[11px] uppercase tracking-wide text-moss-200">Reputation beliefs</div>
+                <div className="space-y-1 rounded border border-moss-700/50 bg-slate-900/55 p-2 text-xs">
+                  {(tick?.reputation?.by_observer?.[String(agent.id)] ?? []).length === 0 ? (
+                    <div className="text-moss-100/70">No visible beliefs.</div>
+                  ) : (
+                    (tick?.reputation?.by_observer?.[String(agent.id)] ?? []).map((belief) => (
+                      <div key={belief.subject_id} className="flex items-center justify-between">
+                        <span className="text-moss-100/80">
+                          A{belief.subject_id} · {belief.label}
+                        </span>
+                        <span className="pixel-font text-moss-50">
+                          h {belief.honesty.toFixed(2)} · c {belief.confidence.toFixed(2)}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-1 text-[11px] uppercase tracking-wide text-moss-200">Recent messages</div>
+                <div className="space-y-1 rounded border border-moss-700/50 bg-slate-900/55 p-2 text-xs">
+                  {messages.length === 0 ? (
+                    <div className="text-moss-100/70">No recent messages this tick.</div>
+                  ) : (
+                    messages.map((entry, idx) => (
+                      <div key={`${entry.t}-${entry.agentId}-${idx}`} className="text-moss-50/90">
+                        [{entry.scope}] {entry.topic}: {entry.message}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-1 text-[11px] uppercase tracking-wide text-moss-200">Decision influence</div>
+                <div className="rounded border border-moss-700/50 bg-slate-900/55 p-2 text-xs">
+                  {decisionDebug ? (
+                    <div className="space-y-1">
+                      <div className="text-moss-100/80">
+                        reason: {String(decisionDebug.influence_reason ?? "-")}
+                      </div>
+                      <div className="text-moss-100/80">
+                        zone: {String(decisionDebug.influencing_zone ?? "-")}
+                      </div>
+                      <div className="text-moss-100/80">
+                        speaker label: {String(decisionDebug.influencing_speaker_label ?? "unknown")}
+                      </div>
+                      <div className="text-moss-100/80">
+                        score: {String(decisionDebug.influence_score ?? "0")}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-moss-100/70">
+                      No decision debug on latest action.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : null}
         </div>
       )}
     </Card>

@@ -4,11 +4,15 @@ import pytest
 
 from llm_social_simulation.simulation.open_world.types import (
     AgentState,
+    GovernanceProposal,
+    GovernanceRule,
     LocationState,
     OpenWorldAction,
+    OpenWorldCommunication,
     OpenWorldEvent,
     OpenWorldObservation,
     OpenWorldTick,
+    ReputationBelief,
 )
 
 
@@ -41,14 +45,70 @@ def test_open_world_schema_fields_are_explicit_and_stable() -> None:
         "nearby_locations",
         "nearby_agents",
         "recent_events",
+        "recent_communications",
+        "public_bulletins",
+        "reputation_beliefs",
+        "pending_proposals",
+        "active_rules",
         "action_space",
         "info",
+    }
+    assert set(GovernanceRule.__dataclass_fields__.keys()) == {
+        "rule_id",
+        "template",
+        "params",
+        "source_proposal_id",
+        "activated_t",
+        "expires_t",
+        "meta",
+    }
+    assert set(GovernanceProposal.__dataclass_fields__.keys()) == {
+        "proposal_id",
+        "proposer_id",
+        "template",
+        "params",
+        "status",
+        "created_t",
+        "voting_start_t",
+        "voting_end_t",
+        "activation_t",
+        "expiry_t",
+        "votes",
+        "meta",
+    }
+    assert set(ReputationBelief.__dataclass_fields__.keys()) == {
+        "subject_id",
+        "honesty",
+        "reliability",
+        "confidence",
+        "label",
+        "evidence_count",
+        "truthful_reports",
+        "false_reports",
+        "meta",
     }
     assert set(OpenWorldAction.__dataclass_fields__.keys()) == {
         "kind",
         "move_target",
         "gather_resource",
         "amount",
+        "message",
+        "speech_act",
+        "topic",
+        "rule_template",
+        "rule_params",
+        "proposal_id",
+        "vote_choice",
+        "meta",
+    }
+    assert set(OpenWorldCommunication.__dataclass_fields__.keys()) == {
+        "t",
+        "sender_id",
+        "scope",
+        "location_id",
+        "message",
+        "speech_act",
+        "topic",
         "meta",
     }
     assert set(OpenWorldEvent.__dataclass_fields__.keys()) == {
@@ -83,6 +143,15 @@ def test_open_world_action_contract_is_strict() -> None:
 
     with pytest.raises(ValueError, match="amount must be None for rest action"):
         OpenWorldAction(kind="rest", amount=1.0)
+
+    with pytest.raises(ValueError, match="message must be a non-empty string"):
+        OpenWorldAction(kind="talk_local", message="  ")
+
+    with pytest.raises(ValueError, match="rule_template"):
+        OpenWorldAction(kind="propose_rule")
+
+    with pytest.raises(ValueError, match="proposal_id"):
+        OpenWorldAction(kind="vote", vote_choice="yes")
 
 
 def test_invalid_events_are_clearly_marked() -> None:
