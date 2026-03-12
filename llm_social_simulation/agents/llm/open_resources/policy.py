@@ -43,6 +43,7 @@ class LLMOpenResourcesPolicy(OpenResourcesPolicy):
         self.llm_skipped_total = 0
         self.parse_retry_count = 0
         self.filled_id_count = 0
+        self.zero_action_override_total = 0
         self.last_raw_output: str | None = None
         self.last_provider: str | None = None
 
@@ -142,6 +143,8 @@ class LLMOpenResourcesPolicy(OpenResourcesPolicy):
         if parsed.action.harvest == 0.0 and parsed.action.contribute == 0.0:
             self.parsed_action_zero_total += 1
 
+        action = self._apply_non_degenerate_fallback(parsed.action, obs)
+
         outcome = obs.info.get("last_step_self")
         outcome_payload = dict(outcome) if isinstance(outcome, dict) else None
         self.memory_store.append(
@@ -152,12 +155,40 @@ class LLMOpenResourcesPolicy(OpenResourcesPolicy):
                 P=float(obs.P),
                 self_wealth=float(obs.self_wealth),
                 action={
-                    "harvest": float(parsed.action.harvest),
-                    "contribute": float(parsed.action.contribute),
+                    "harvest": float(action.harvest),
+                    "contribute": float(action.contribute),
                 },
                 outcome=outcome_payload,
                 reason=parsed.reason,
             ),
         )
 
-        return parsed.action
+        return action
+
+    def _apply_non_degenerate_fallback(
+        self, action: OpenResourcesAction, obs: OpenResourcesObservation
+    ) -> OpenResourcesAction:
+        """
+        Prevent persistent all-zero behavior when resources are healthy.
+
+        We only override the exact (0,0) case and keep the nudge small.
+        """
+        harvest = float(action.harvest)
+        contribute = float(action.contribute)
+        resource = float(obs.R)
+        if harvest != 0.0 or contribute != 0.0:
+            return action
+
+        if resource <= 0.5:
+            return action
+
+        max_h = float(obs.info.get("max_harvest_per_step", 1.0))
+        if max_h <= 0.0:
+            return action
+
+        fallback_harvest = min(max_h, max(0.1, min(1.0, 0.02 * resource)))
+        if fallback_harvest <= 0.0:
+            return action
+
+        self.zero_action_override_total += 1
+        return OpenResourcesAction(harvest=float(fallback_harvest), contribute=0.0)

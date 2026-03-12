@@ -20,6 +20,7 @@ def _system_prompt() -> str:
         "Respond with JSON only (no markdown or code fences). "
         "Hard constraints: harvest >= 0 and contribute >= 0. "
         "Contribute must not exceed your current self_wealth. "
+        "If R is healthy (R > 0.5), do not return harvest=0 and contribute=0 together. "
         "Prefer contribute <= 20% of self_wealth unless there is a strong reason. "
         "Required output schema: "
         '{"required":true,"self_id":<int>,"t":<int>,'
@@ -62,6 +63,8 @@ def build_open_resources_messages(
             "contribute_max_by_wealth": float(obs.self_wealth),
             "recommended_contribute_cap_frac": 0.2,
             "recommended_contribute_cap": 0.2 * float(obs.self_wealth),
+            "resource_healthy_threshold_for_nonzero_action": 0.5,
+            "forbid_both_zero_when_resource_healthy": True,
             "required_must_be_true": True,
         },
     }

@@ -146,6 +146,7 @@ def _collect_llm_diagnostics(agents: list[Any], llm_guardrails: bool) -> dict[st
             "llm_skipped_total": int(getattr(policy, "llm_skipped_total", 0)),
             "parse_retry_count": int(getattr(policy, "parse_retry_count", 0)),
             "filled_id_count": int(getattr(policy, "filled_id_count", 0)),
+            "zero_action_override_count": int(getattr(policy, "zero_action_override_total", 0)),
             "fail_closed_count": int(getattr(agent, "fail_closed_count", 0)),
             "harvest_nan_count": int(getattr(agent, "harvest_nan_count", 0)),
             "contribute_nan_count": int(getattr(agent, "contribute_nan_count", 0)),
@@ -178,6 +179,9 @@ def _collect_llm_diagnostics(agents: list[Any], llm_guardrails: bool) -> dict[st
         "llm_skipped_total": int(sum(int(entry["llm_skipped_total"]) for entry in entries)),
         "parse_retry_total": int(sum(int(entry["parse_retry_count"]) for entry in entries)),
         "id_filled_total": int(sum(int(entry["filled_id_count"]) for entry in entries)),
+        "zero_action_override_total": int(
+            sum(int(entry["zero_action_override_count"]) for entry in entries)
+        ),
         "guardrails_fail_closed_total": int(
             sum(int(entry["fail_closed_count"]) for entry in entries)
         ),

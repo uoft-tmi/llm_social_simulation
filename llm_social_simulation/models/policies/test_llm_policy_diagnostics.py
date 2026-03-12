@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from llm_social_simulation.agents.llm.open_resources.policy import (
     LLMOpenResourcesPolicy,
     LLMOpenResourcesPolicyConfig,
@@ -69,11 +71,12 @@ def test_llm_policy_diagnostics_zero_action_counted() -> None:
     )
 
     action = policy.decide(_obs())
-    assert action.harvest == 0.0
+    assert action.harvest == pytest.approx(0.2)
     assert action.contribute == 0.0
     assert policy.llm_call_total == 1
     assert policy.llm_response_empty_total == 0
     assert policy.parsed_action_zero_total == 1
+    assert policy.zero_action_override_total == 1
     assert policy.last_raw_output is not None
     assert policy.last_provider == "mock-provider"
 
@@ -92,3 +95,23 @@ def test_llm_policy_diagnostics_empty_response_counted_and_retried() -> None:
     assert policy.llm_call_total == 2
     assert policy.llm_response_empty_total == 1
     assert policy.parse_retry_count == 1
+
+
+def test_llm_policy_keeps_zero_when_resource_is_depleted() -> None:
+    world = OpenResourcesGameWorld(
+        OpenResourcesConfig(
+            agent_ids=(0,),
+            initial_resource=0.0,
+            resource_cap=0.0,
+        )
+    )
+    policy = LLMOpenResourcesPolicy(
+        agent_id=0,
+        client=ZeroActionClient(),
+        config=LLMOpenResourcesPolicyConfig(model="unit-model", run_id="diag-depleted"),
+    )
+
+    action = policy.decide(world.get_observation(0))
+    assert action.harvest == 0.0
+    assert action.contribute == 0.0
+    assert policy.zero_action_override_total == 0
