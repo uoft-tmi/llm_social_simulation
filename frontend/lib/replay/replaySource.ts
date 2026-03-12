@@ -1,6 +1,12 @@
 import mockReplay from "@/lib/mock/sampleReplay.json";
 import { ensureReplay } from "@/lib/replay/replayAdapter";
-import { ReplaySourceMode, SimulationReplay } from "@/lib/replay/replayTypes";
+import {
+  BackendRunCreateResponse,
+  BackendRunRequest,
+  BackendRunStatusResponse,
+  ReplaySourceMode,
+  SimulationReplay
+} from "@/lib/replay/replayTypes";
 
 export type ReplaySourceConfig =
   | { mode: "mock" }
@@ -28,4 +34,43 @@ export async function loadReplay(config: ReplaySourceConfig): Promise<Simulation
 
 export function defaultReplayMode(): ReplaySourceMode {
   return "mock";
+}
+
+export function defaultBackendApiBase(): string {
+  return process.env.NEXT_PUBLIC_SIM_API_BASE ?? "http://127.0.0.1:8000";
+}
+
+export async function createBackendRun(
+  request: BackendRunRequest,
+  apiBase = defaultBackendApiBase()
+): Promise<BackendRunCreateResponse> {
+  const response = await fetch(`${apiBase}/api/runs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request)
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to create run: ${response.status} ${text}`);
+  }
+  return (await response.json()) as BackendRunCreateResponse;
+}
+
+export async function getBackendRunStatus(
+  runId: string,
+  apiBase = defaultBackendApiBase()
+): Promise<BackendRunStatusResponse> {
+  const response = await fetch(`${apiBase}/api/runs/${runId}`);
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to get run status: ${response.status} ${text}`);
+  }
+  return (await response.json()) as BackendRunStatusResponse;
+}
+
+export async function loadBackendReplay(
+  runId: string,
+  apiBase = defaultBackendApiBase()
+): Promise<SimulationReplay> {
+  return loadReplay({ mode: "http", url: `${apiBase}/api/runs/${runId}/replay` });
 }

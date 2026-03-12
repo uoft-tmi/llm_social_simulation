@@ -45,3 +45,29 @@ export type AgentState = {
 };
 
 export type ReplaySourceMode = "mock" | "http" | "ws";
+
+export type BackendRunRequest = {
+  agent_type: "greedy" | "coop" | "adaptive" | "mixed" | "llm";
+  n_agents: number;
+  rounds: number;
+  seed?: number | null;
+  config_overrides?: Record<string, number | string | null>;
+  llm_guardrails?: boolean;
+  llm_model?: string;
+  llm_temperature?: number;
+  llm_max_tokens?: number;
+};
+
+export type BackendRunCreateResponse = {
+  run_id: string;
+  status: "queued" | "running" | "done" | "failed";
+  created_at: number;
+};
+
+export type BackendRunStatusResponse = {
+  run_id: string;
+  status: "queued" | "running" | "done" | "failed";
+  error: string | null;
+  created_at: number;
+  updated_at: number;
+};

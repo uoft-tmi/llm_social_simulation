@@ -75,9 +75,13 @@ class OpenRouterClient(LLMClient):
             "Content-Type": "application/json",
         }
         if self.http_referer:
-            headers["HTTP-Referer"] = self.http_referer
+            safe_referer = self._safe_header_value(self.http_referer)
+            if safe_referer is not None:
+                headers["HTTP-Referer"] = safe_referer
         if self.x_title:
-            headers["X-Title"] = self.x_title
+            safe_title = self._safe_header_value(self.x_title)
+            if safe_title is not None:
+                headers["X-Title"] = safe_title
 
         req = urlrequest.Request(
             self.url,
@@ -158,3 +162,17 @@ class OpenRouterClient(LLMClient):
             return first["text"]
 
         raise LLMProviderError("OpenRouter response did not contain message.content")
+
+    @staticmethod
+    def _safe_header_value(value: str) -> str | None:
+        """Return latin-1 encodable header value; drop invalid/empty values."""
+        cleaned = str(value).strip()
+        if not cleaned:
+            return None
+        try:
+            cleaned.encode("latin-1")
+            return cleaned
+        except UnicodeEncodeError:
+            # urllib/http.client requires latin-1 header bytes.
+            downgraded = cleaned.encode("ascii", "ignore").decode("ascii").strip()
+            return downgraded if downgraded else None
