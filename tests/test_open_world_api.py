@@ -61,44 +61,26 @@ def _start_test_server() -> tuple[ThreadingHTTPServer, str]:
     return server, base_url
 
 
-def test_open_world_run_can_be_created_and_replay_retrieved() -> None:
+def test_open_world_mode_is_rejected_via_api() -> None:
     server, base_url = _start_test_server()
     try:
-        status_code, created = _http_json(
-            "POST",
-            f"{base_url}/api/runs",
-            {
-                "mode": "open_world",
-                "n_agents": 4,
-                "rounds": 6,
-                "seed": 0,
-            },
-        )
-        assert status_code == 202
-        run_id = str(created["run_id"])
-
-        terminal = _wait_for_terminal_status(base_url, run_id)
-        assert terminal["status"] == "done"
-        assert terminal["mode"] == "open_world"
-
-        replay_code, replay = _http_json("GET", f"{base_url}/api/runs/{run_id}/replay")
-        assert replay_code == 200
-        assert replay["meta"]["runId"] == run_id
-        assert replay["meta"]["scenario"] == "open-world-baseline"
-        assert replay["meta"]["mode"] == "open_world"
-        assert isinstance(replay["ticks"], list)
-        assert len(replay["ticks"]) == 6
-
-        first_tick = replay["ticks"][0]
-        assert {"t", "world", "agents", "metrics", "zones", "events", "communications"}.issubset(
-            set(first_tick.keys())
-        )
-        assert len(first_tick["zones"]) == 8
-        assert len(first_tick["events"]) >= 4
-        assert all("x" in agent and "y" in agent for agent in first_tick["agents"])
-
-        # Ensure replay payload is JSON-serializable end-to-end.
-        json.dumps(replay)
+        try:
+            _http_json(
+                "POST",
+                f"{base_url}/api/runs",
+                {
+                    "mode": "open_world",
+                    "n_agents": 4,
+                    "rounds": 6,
+                    "seed": 0,
+                    "agent_type": "greedy",
+                },
+            )
+            raise AssertionError("Expected open_world mode request to fail")
+        except urlrequest.HTTPError as exc:
+            assert exc.code == 400
+            body = json.loads(exc.read().decode("utf-8"))
+            assert body["error"] == "invalid_mode"
     finally:
         server.shutdown()
         server.server_close()

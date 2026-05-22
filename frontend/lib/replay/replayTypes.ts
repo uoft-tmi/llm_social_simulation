@@ -1,4 +1,4 @@
-export type ReplayMode = "open_resources" | "open_world";
+export type ReplayMode = "open_resources";
 
 export type SimulationReplay = {
   meta: {
@@ -145,7 +145,7 @@ export type ReplaySourceMode = "mock" | "http" | "ws";
 
 export type BackendRunRequest = {
   mode?: ReplayMode;
-  agent_type: "greedy" | "coop" | "adaptive" | "mixed" | "llm" | "rule";
+  agent_type: "greedy" | "coop" | "adaptive" | "mixed" | "llm";
   n_agents: number;
   rounds: number;
   seed?: number | null;

@@ -9,24 +9,16 @@ import {
   loadBackendReplay,
   loadReplay
 } from "@/lib/replay/replaySource";
-import { BackendRunRequest, ReplayMode, SimulationReplay } from "@/lib/replay/replayTypes";
+import { BackendRunRequest, SimulationReplay } from "@/lib/replay/replayTypes";
 import { useReplayController } from "@/lib/replay/useReplayController";
 
 import { AgentInspector } from "./AgentInspector";
 import { CollapseBanner } from "./CollapseBanner";
 import { MiniChartsPanel } from "./MiniChartsPanel";
-import { OpenWorldResearchView } from "./OpenWorldResearchView";
 import { SimulationMetricsPanel } from "./SimulationMetricsPanel";
 import { SimulationToolbar } from "./SimulationToolbar";
 
 const OPEN_RESOURCES_AGENT_OPTIONS = ["greedy", "coop", "adaptive", "mixed", "llm"] as const;
-const OPEN_WORLD_AGENT_OPTIONS = ["rule", "llm"] as const;
-
-function deriveReplayMode(replay: SimulationReplay): ReplayMode {
-  if (replay.meta.mode === "open_world") return "open_world";
-  if (replay.meta.scenario.toLowerCase().includes("open-world")) return "open_world";
-  return "open_resources";
-}
 
 export function SimulationShell() {
   const [replay, setReplay] = useState<SimulationReplay | null>(null);
@@ -37,7 +29,6 @@ export function SimulationShell() {
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [pendingAutoPlay, setPendingAutoPlay] = useState(false);
   const [runForm, setRunForm] = useState({
-    mode: "open_resources" as ReplayMode,
     agentType: "greedy" as BackendRunRequest["agent_type"],
     nAgents: 6,
     rounds: 80,
@@ -63,7 +54,6 @@ export function SimulationShell() {
     []
   );
   const resolvedReplay = replay ?? fallbackReplay;
-  const replayMode = deriveReplayMode(resolvedReplay);
 
   const replayController = useReplayController(resolvedReplay, 1);
   const { reset, play } = replayController;
@@ -107,29 +97,20 @@ export function SimulationShell() {
     setRunError(null);
     setRunStatus("submitting");
     try {
-      const request: BackendRunRequest =
-        runForm.mode === "open_world"
-          ? {
-              mode: "open_world",
-              agent_type: runForm.agentType === "llm" ? "llm" : "rule",
-              n_agents: runForm.nAgents,
-              rounds: runForm.rounds,
-              seed: runForm.seed
-            }
-          : {
-              mode: "open_resources",
-              agent_type: runForm.agentType === "rule" ? "greedy" : runForm.agentType,
-              n_agents: runForm.nAgents,
-              rounds: runForm.rounds,
-              seed: runForm.seed,
-              config_overrides: {
-                initial_resource: runForm.initialResource,
-                resource_cap: runForm.resourceCap,
-                regen_rate: runForm.regenRate,
-                max_harvest_per_step: runForm.maxHarvestPerStep,
-                collapse_threshold: runForm.collapseThreshold
-              }
-            };
+      const request: BackendRunRequest = {
+        mode: "open_resources",
+        agent_type: runForm.agentType,
+        n_agents: runForm.nAgents,
+        rounds: runForm.rounds,
+        seed: runForm.seed,
+        config_overrides: {
+          initial_resource: runForm.initialResource,
+          resource_cap: runForm.resourceCap,
+          regen_rate: runForm.regenRate,
+          max_harvest_per_step: runForm.maxHarvestPerStep,
+          collapse_threshold: runForm.collapseThreshold
+        }
+      };
       const created = await createBackendRun(request);
       setActiveRunId(created.run_id);
       setRunStatus(created.status);
@@ -148,7 +129,7 @@ export function SimulationShell() {
       <header className="flex items-center justify-between">
         <div>
           <h1 className="pixel-font text-sm uppercase tracking-widest text-moss-100">
-            {replayMode === "open_world" ? "TMI Town Research Viewer" : "Open Resources Simulation Viewer"}
+            Open Resources Simulation Viewer
           </h1>
           <p className="text-xs text-moss-100/70">
             Run {resolvedReplay.meta.runId} · {resolvedReplay.meta.scenario}
@@ -176,31 +157,6 @@ export function SimulationShell() {
           <h2 className="pixel-font mb-3 text-xs uppercase text-moss-200">Run Config</h2>
           <div className="space-y-2 text-xs">
             <label className="block">
-              <span className="mb-1 block text-moss-100/80">Mode</span>
-              <select
-                value={runForm.mode}
-                onChange={(e) => {
-                  const mode = e.target.value as ReplayMode;
-                  patchRunForm("mode", mode);
-                  patchRunForm(
-                    "agentType",
-                    mode === "open_world"
-                      ? runForm.agentType === "llm"
-                        ? "llm"
-                        : "rule"
-                      : runForm.agentType === "rule"
-                        ? "greedy"
-                        : runForm.agentType
-                  );
-                }}
-                className="w-full rounded border border-moss-700/60 bg-slate-900/70 px-2 py-1 text-moss-50"
-              >
-                <option value="open_resources">open_resources</option>
-                <option value="open_world">open_world</option>
-              </select>
-            </label>
-
-            <label className="block">
               <span className="mb-1 block text-moss-100/80">Agent Type</span>
               <select
                 value={runForm.agentType}
@@ -209,10 +165,7 @@ export function SimulationShell() {
                 }
                 className="w-full rounded border border-moss-700/60 bg-slate-900/70 px-2 py-1 text-moss-50"
               >
-                {(runForm.mode === "open_world"
-                  ? OPEN_WORLD_AGENT_OPTIONS
-                  : OPEN_RESOURCES_AGENT_OPTIONS
-                ).map((option) => (
+                {OPEN_RESOURCES_AGENT_OPTIONS.map((option) => (
                   <option key={option} value={option}>
                     {option}
                   </option>
@@ -250,62 +203,58 @@ export function SimulationShell() {
               />
             </label>
 
-            {runForm.mode === "open_resources" ? (
-              <>
-                <label className="block">
-                  <span className="mb-1 block text-moss-100/80">Initial Resource</span>
-                  <input
-                    type="number"
-                    value={runForm.initialResource}
-                    onChange={(e) => patchRunForm("initialResource", Number(e.target.value))}
-                    className="w-full rounded border border-moss-700/60 bg-slate-900/70 px-2 py-1 text-moss-50"
-                  />
-                </label>
+            <label className="block">
+              <span className="mb-1 block text-moss-100/80">Initial Resource</span>
+              <input
+                type="number"
+                value={runForm.initialResource}
+                onChange={(e) => patchRunForm("initialResource", Number(e.target.value))}
+                className="w-full rounded border border-moss-700/60 bg-slate-900/70 px-2 py-1 text-moss-50"
+              />
+            </label>
 
-                <label className="block">
-                  <span className="mb-1 block text-moss-100/80">Resource Cap</span>
-                  <input
-                    type="number"
-                    value={runForm.resourceCap}
-                    onChange={(e) => patchRunForm("resourceCap", Number(e.target.value))}
-                    className="w-full rounded border border-moss-700/60 bg-slate-900/70 px-2 py-1 text-moss-50"
-                  />
-                </label>
+            <label className="block">
+              <span className="mb-1 block text-moss-100/80">Resource Cap</span>
+              <input
+                type="number"
+                value={runForm.resourceCap}
+                onChange={(e) => patchRunForm("resourceCap", Number(e.target.value))}
+                className="w-full rounded border border-moss-700/60 bg-slate-900/70 px-2 py-1 text-moss-50"
+              />
+            </label>
 
-                <label className="block">
-                  <span className="mb-1 block text-moss-100/80">Regen Rate</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={runForm.regenRate}
-                    onChange={(e) => patchRunForm("regenRate", Number(e.target.value))}
-                    className="w-full rounded border border-moss-700/60 bg-slate-900/70 px-2 py-1 text-moss-50"
-                  />
-                </label>
+            <label className="block">
+              <span className="mb-1 block text-moss-100/80">Regen Rate</span>
+              <input
+                type="number"
+                step="0.01"
+                value={runForm.regenRate}
+                onChange={(e) => patchRunForm("regenRate", Number(e.target.value))}
+                className="w-full rounded border border-moss-700/60 bg-slate-900/70 px-2 py-1 text-moss-50"
+              />
+            </label>
 
-                <label className="block">
-                  <span className="mb-1 block text-moss-100/80">Max Harvest / Step</span>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={runForm.maxHarvestPerStep}
-                    onChange={(e) => patchRunForm("maxHarvestPerStep", Number(e.target.value))}
-                    className="w-full rounded border border-moss-700/60 bg-slate-900/70 px-2 py-1 text-moss-50"
-                  />
-                </label>
+            <label className="block">
+              <span className="mb-1 block text-moss-100/80">Max Harvest / Step</span>
+              <input
+                type="number"
+                step="0.1"
+                value={runForm.maxHarvestPerStep}
+                onChange={(e) => patchRunForm("maxHarvestPerStep", Number(e.target.value))}
+                className="w-full rounded border border-moss-700/60 bg-slate-900/70 px-2 py-1 text-moss-50"
+              />
+            </label>
 
-                <label className="block">
-                  <span className="mb-1 block text-moss-100/80">Collapse Threshold</span>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={runForm.collapseThreshold}
-                    onChange={(e) => patchRunForm("collapseThreshold", Number(e.target.value))}
-                    className="w-full rounded border border-moss-700/60 bg-slate-900/70 px-2 py-1 text-moss-50"
-                  />
-                </label>
-              </>
-            ) : null}
+            <label className="block">
+              <span className="mb-1 block text-moss-100/80">Collapse Threshold</span>
+              <input
+                type="number"
+                step="0.1"
+                value={runForm.collapseThreshold}
+                onChange={(e) => patchRunForm("collapseThreshold", Number(e.target.value))}
+                className="w-full rounded border border-moss-700/60 bg-slate-900/70 px-2 py-1 text-moss-50"
+              />
+            </label>
 
             <button
               type="button"
@@ -329,33 +278,23 @@ export function SimulationShell() {
         <section className="flex min-h-[620px] flex-col gap-3">
           <CollapseBanner tick={currentTick} />
           <div className="h-[620px]">
-            {replayMode === "open_world" ? (
-              <OpenWorldResearchView
-                tick={currentTick}
-                selectedAgentId={selectedAgentId}
-                onSelectAgent={setSelectedAgentId}
-                onHoverAgent={setHoveredAgentId}
-              />
-            ) : (
-              <WorldCanvas
-                replay={resolvedReplay}
-                tickIndex={replayController.currentTickIndex}
-                selectedAgentId={selectedAgentId}
-                onSelectAgent={setSelectedAgentId}
-                onHoverAgent={setHoveredAgentId}
-                speed={replayController.speed}
-              />
-            )}
+            <WorldCanvas
+              replay={resolvedReplay}
+              tickIndex={replayController.currentTickIndex}
+              selectedAgentId={selectedAgentId}
+              onSelectAgent={setSelectedAgentId}
+              onHoverAgent={setHoveredAgentId}
+              speed={replayController.speed}
+            />
           </div>
         </section>
 
         <aside className="subtle-scrollbar flex max-h-[calc(100vh-180px)] flex-col gap-3 overflow-y-auto pr-1">
-          <SimulationMetricsPanel tick={currentTick} mode={replayMode} />
+          <SimulationMetricsPanel tick={currentTick} />
           <AgentInspector
             tick={currentTick}
             selectedAgentId={selectedAgentId}
             hoveredAgentId={hoveredAgentId}
-            mode={replayMode}
           />
           <MiniChartsPanel replay={resolvedReplay} />
         </aside>

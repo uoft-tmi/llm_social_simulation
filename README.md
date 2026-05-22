@@ -2,7 +2,6 @@
 
 Multi-agent social simulation toolkit with:
 - `open_resources` mode
-- `open_world` mode
 - Next.js replay/viewer frontend in `frontend/`
 
 ## Development Setup (uv)
