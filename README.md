@@ -1,6 +1,5 @@
 # **project name**
 
----
 
 ## **Table of Contents**
 
