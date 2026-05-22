@@ -18,6 +18,8 @@ import { MiniChartsPanel } from "./MiniChartsPanel";
 import { SimulationMetricsPanel } from "./SimulationMetricsPanel";
 import { SimulationToolbar } from "./SimulationToolbar";
 
+const OPEN_RESOURCES_AGENT_OPTIONS = ["greedy", "coop", "adaptive", "mixed", "llm"] as const;
+
 export function SimulationShell() {
   const [replay, setReplay] = useState<SimulationReplay | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
@@ -96,6 +98,7 @@ export function SimulationShell() {
     setRunStatus("submitting");
     try {
       const request: BackendRunRequest = {
+        mode: "open_resources",
         agent_type: runForm.agentType,
         n_agents: runForm.nAgents,
         rounds: runForm.rounds,
@@ -162,11 +165,11 @@ export function SimulationShell() {
                 }
                 className="w-full rounded border border-moss-700/60 bg-slate-900/70 px-2 py-1 text-moss-50"
               >
-                <option value="greedy">greedy</option>
-                <option value="coop">coop</option>
-                <option value="adaptive">adaptive</option>
-                <option value="mixed">mixed</option>
-                <option value="llm">llm</option>
+                {OPEN_RESOURCES_AGENT_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
               </select>
             </label>
 
@@ -288,7 +291,11 @@ export function SimulationShell() {
 
         <aside className="subtle-scrollbar flex max-h-[calc(100vh-180px)] flex-col gap-3 overflow-y-auto pr-1">
           <SimulationMetricsPanel tick={currentTick} />
-          <AgentInspector tick={currentTick} selectedAgentId={selectedAgentId} hoveredAgentId={hoveredAgentId} />
+          <AgentInspector
+            tick={currentTick}
+            selectedAgentId={selectedAgentId}
+            hoveredAgentId={hoveredAgentId}
+          />
           <MiniChartsPanel replay={resolvedReplay} />
         </aside>
       </div>

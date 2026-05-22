@@ -1,90 +1,74 @@
+# LLM Social Simulation
+
+Multi-agent social simulation toolkit with:
+- `open_resources` mode
+- Next.js replay/viewer frontend in `frontend/`
 
 ## Development Setup (uv)
 
-We use **uv** + lock-based dependency management for reproducible environments.
-Please **do not** use `pip install -r ...` or manual dependency installs.
+We use **uv** for reproducible environments.
 
 ### 1) Install `uv`
 
-#### macOS / Linux
+macOS / Linux:
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-#### Windows (PowerShell)
+Windows (PowerShell):
 
 ```powershell
 irm https://astral.sh/uv/install.ps1 | iex
 ```
 
-### 2) Create the environment
-If you previously used the old setup, delete .venv first. 
-```bash
-rm -rf .venv
-```
-From the repository root, do the following:
+### 2) Create env and install deps
+
+From repo root:
+
 ```bash
 uv venv --python 3.12
 uv sync --group dev
 ```
 
-### 3) Install pre-commit (recommended)
+### 3) Configure OpenRouter (only needed for LLM runs)
 
-```bash
-uv run pre-commit install
-```
-
-### 4) Run tests
-
-```bash
-uv run pytest
-```
-
-### 5) Lint and format
-
-```bash
-uv run ruff format .
-uv run ruff check .
-```
-
----
-
-## Troubleshooting
-
-If `uv` is not found after installation on macOS/Linux, add it to your `PATH`:
-
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-Then restart your terminal and retry.
-
-If setup still fails, share:
-- the full error output
-- `uv --version`
-
----
-## Development Setup (uv)
-### 1) Create your own OpenRouter API key from here: https://openrouter.ai/
-### 2) In the repository root do the following:
 ```bash
 cp .env.example .env
 ```
-Then Open .env and paste:
+
+Then set `OPENROUTER_API_KEY` in `.env`.
+
+### 4) Run tests and lint
+
 ```bash
-OPENROUTER_API_KEY=sk-xxxx
+uv run pytest
+uv run ruff check .
 ```
-### 3) Make sure your environment is set up
+
+## Quick Commands
+
+Run backend API:
+
 ```bash
-uv sync --group dev
+uv run python -m llm_social_simulation.api.run_server --host 127.0.0.1 --port 8000
 ```
-### 4) Test
+
+Try OpenRouter connectivity:
+
 ```bash
 uv run python llm_social_simulation/models/tests/try_openrouter.py
 ```
 
+Run frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
 ## Notes
 
-- Python requirement is defined in `pyproject.toml`.
-- Prefer running all tooling through `uv run ...` to keep execution inside the managed environment.
+- Python requirement is in `pyproject.toml`.
+- Use `uv run ...` to keep commands inside the managed environment.
